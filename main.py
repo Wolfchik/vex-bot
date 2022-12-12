@@ -1082,4 +1082,4 @@ async def on_message(msg):
         await msg.delete()
         return await msg.channel.send(f"<:policePanda:1047242230651437077> {msg.author.mention} На этом сервере запрещены плохие слова! Вам вынесен варн в виде наказания.")
 
-bot.run("MTA0NzEyNTU5MjIyMDM3MzA3NQ.G5JOd8.JgrH8x4h6g7VmcF-gZ_kZ4E9t5MSuYvTw9h3Yk")
+bot.run("Put your token here")
