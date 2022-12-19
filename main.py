@@ -7,35 +7,34 @@ import requests
 import io
 import json
 import datetime
+import calendar
 import time
 import sqlite3
 from fuzzywuzzy import fuzz
 from memory import Memory
 from disnake.ext import commands
 from PIL import Image, ImageFont, ImageDraw
-from googletrans import Translator
+import googletrans
 from gtts import gTTS
-from yandex_music import Client
-client = Client("y0_AgAAAABCYqrDAAG8XgAAAADWMujSSbuFlQssRKSr1s1FW9hf-KoRuaE").init()
+from akinator import (
+    CantGoBackAnyFurther,
+    InvalidAnswer,
+    Akinator,
+    Answer,
+    Theme,
+)
+lists = []
+translator = googletrans.Translator()
 
 class Song(disnake.PCMVolumeTransformer):
     def search_tracks(ctx, query):
-        searcher = client.search(str(query))
-        if not searcher.tracks:
-            return "notSearched"
-        if searcher.tracks["results"][0] == {}:
-            return "notSearched"
-        client.tracks(f"{searcher.tracks['results'][0]['id']}")[0].download(f"songs/{ctx.guild.id}.mp3")
-        #if not searcher.best.result:
-        #    print("Не удалось что либо найти!")
-        #print(searcher.best.result.track_id)
-        #client.tracks(searcher.best.result.track_id)[0].download("songs/{}.mp3".format(ctx.guild.id))
-        payload = {
-            "title": searcher.tracks["results"][0]["title"],
-            "image": searcher.tracks["results"][0]["og_image"]
-        #"year": searcher.tracks["results"][0]["year"]
+        request = requests.get(f"http://zvuk.com/api/search?query={query}")
+        json_load = json.loads(request.text["result"])
+        params = {
+        "name": json_load["name"],
+        "id": json_load["id"]
         }
-        return payload
+        return params
 
     async def join_channel(ctx):
         voice = ctx.author.voice
@@ -150,11 +149,59 @@ class Main(commands.Cog):
 
     @commands.slash_command(name="help",description="Список команд для ориентации.")
     async def help(self, ctx):
-        embed = disnake.Embed(title="Список моих команд", description="**🎮 Игры**\n`/guess-the-letter` - Игра в угадай букву\n`/maths-plus` - Игра в математику с сложением\n`/maths-minus` - Игра в математику с вычитанием\n`/maths-multiply` - Игра в математику с умножением\n`/tape` - Игра в рулетку\n`/truth-or-dare` - Игра в п или д\n`/heads-or-tails` - Подбросить монетку\n\n**Модерация**\n`/ban [member] <reason>` - Забанить кого-то\n`/unban [member id]` - разбанить кого то\n`/kick [member] <reason>` - Выгнать кого либо с сервера\n`/mute [member] <time>` - Заглушить кого то на сколько то минут\n`/warn [@member] <reason>` - Выдать пред\n`/warns` - Посмотреть все преды на этом сервере\n`/unwarn [номер_случая]` - Снять пред\n\n**Утилиты**\n`/profile` - Увидеть своё кол-во очков и профиль\n`/lgbt` - Делает вам ЛГБТ аватарку\n`/jail` - Делает аватарку, сидящую в тюрьме\n`/passed` - Делает на вашей аватарке надпись \"Mission Passed, respect+\"\n`/wasted` - Делает на вашей аватарке надпись \"WASTED\"\n`/pixelate` - Пиксилизирует ваш аватар\n`/triggered` - Делает на вашей аватарке надпись \"TRIGGERED\"\n`/ussr` - Накладывает на ваш аватар флаг СССР\n`/youtube-comment [коментарий]` - Делает коментарий с вашим ником, аватаром и коментарием\n`/voice [текст]` - Создаёт озвучку указаного вами текста\n`/encode [текст]` - Зашифровать текст в base64\n`/decode [base64]` - Расшифровать base64 в текст\n\n**💲 Экономика**\n`/daily` - Получить ежедневную награду, может быть отключена админами\n`/work [!работа]` - Работать чтобы получить деньги, работа выбирается выпадающим списком\n`/balance` - Проверить свой или чужой баланс\n\n**Отношения**\n`/hug [участник]` - Обнять кого либо\n`/pat [участник]` - Погладить кого либо\n\n**РП**\n`/acc-register [имя]` - Создать нового персонажа\n`/acc-update-avatar [имя]` - Сменить аватар персонажу\n`/acc-send [имя] [сообщение]` - Отправить сообщение от имени персонажа\n`/acc-all` - Посмотреть список всех персонажей в этом канале\n`/acc-remove [имя]` - Удалить персонажа\n\n**⚙Настройки**\n`/set-welcome-channel [канал]` - Устанавливает канал для уведомления о новых участниках\n`/set-bye-channel [канал]` - Установить канал для уведомления о ушедших участниках\n`/set-daily [сумма] - Установить сумму ежедневного приза, 0 если отключить`\n`/set-anti-badwords` - Включить анти плохие слова\n`/disable-set [настройка]` - Отключить какую то настройку, настройка выбирается выпадающим списком\n`/ping` - Проверить работоспособность бота", color=0x228b22)
-        embed.set_footer(
-            text="Произоидёт автоматическое удаление сообщения через 60 секунд!"
-        )
-        await ctx.send(embed=embed, delete_after=60.0)
+        #embed = disnake.Embed(title="Список моих команд", description="**🎮 Игры**\n`/guess-the-letter` - Игра в угадай букву\n`/maths-plus` - Игра в математику с сложением\n`/maths-minus` - Игра в математику с вычитанием\n`/maths-multiply` - Игра в математику с умножением\n`/tape` - Игра в рулетку\n`/truth-or-dare` - Игра в п или д\n`/heads-or-tails` - Подбросить монетку\n\n**Модерация**\n`/ban [member] <reason>` - Забанить кого-то\n`/unban [member id]` - разбанить кого то\n`/kick [member] <reason>` - Выгнать кого либо с сервера\n`/mute [member] <time>` - Заглушить кого то на сколько то минут\n`/warn [@member] <reason>` - Выдать пред\n`/warns` - Посмотреть все преды на этом сервере\n`/unwarn [номер_случая]` - Снять пред\n\n**Утилиты**\n`/profile` - Увидеть своё кол-во очков и профиль\n`/lgbt` - Делает вам ЛГБТ аватарку\n`/jail` - Делает аватарку, сидящую в тюрьме\n`/passed` - Делает на вашей аватарке надпись \"Mission Passed, respect+\"\n`/wasted` - Делает на вашей аватарке надпись \"WASTED\"\n`/pixelate` - Пиксилизирует ваш аватар\n`/triggered` - Делает на вашей аватарке надпись \"TRIGGERED\"\n`/ussr` - Накладывает на ваш аватар флаг СССР\n`/youtube-comment [коментарий]` - Делает коментарий с вашим ником, аватаром и коментарием\n`/voice [текст]` - Создаёт озвучку указаного вами текста\n`/encode [текст]` - Зашифровать текст в base64\n`/decode [base64]` - Расшифровать base64 в текст\n\n**💲 Экономика**\n`/daily` - Получить ежедневную награду, может быть отключена админами\n`/work [!работа]` - Работать чтобы получить деньги, работа выбирается выпадающим списком\n`/balance` - Проверить свой или чужой баланс\n\n**Отношения**\n`/hug [участник]` - Обнять кого либо\n`/pat [участник]` - Погладить кого либо\n\n**РП**\n`/acc-register [имя]` - Создать нового персонажа\n`/acc-update-avatar [имя]` - Сменить аватар персонажу\n`/acc-send [имя] [сообщение]` - Отправить сообщение от имени персонажа\n`/acc-all` - Посмотреть список всех персонажей в этом канале\n`/acc-remove [имя]` - Удалить персонажа\n\n**⚙Настройки**\n`/set-welcome-channel [канал]` - Устанавливает канал для уведомления о новых участниках\n`/set-bye-channel [канал]` - Установить канал для уведомления о ушедших участниках\n`/set-daily [сумма] - Установить сумму ежедневного приза, 0 если отключить`\n`/set-anti-badwords` - Включить анти плохие слова\n`/disable-set [настройка]` - Отключить какую то настройку, настройка выбирается выпадающим списком\n`/ping` - Проверить работоспособность бота", color=0x228b22)
+        #embed.set_footer(
+        #    text="Произоидёт автоматическое удаление сообщения через 60 секунд!"
+        #)
+        embedmain = disnake.Embed(title="Начните нажимать на кнопки для выбор чего то.",description="🎮 **Игры**\n\n<:cooldown:1047243027166539846> **Модерация**\n\n🎁**Утилиты**\n\n:dollar: **Экономика**\n\n<:pandaElf:1047241340657872948> **Отношения**\n\n<:thinks1:1047243641388793938> **РП**\n\n⚙ **Настройки**",color=0x228b22)
+        await ctx.send(embed=embedmain,components=[
+            disnake.ui.Button(label="Игры", style=disnake.ButtonStyle.success, custom_id="games"),
+            disnake.ui.Button(label="Модерация", style=disnake.ButtonStyle.danger, custom_id="mod"),
+            disnake.ui.Button(label="Утилиты", style=disnake.ButtonStyle.success, custom_id="utils"),
+            disnake.ui.Button(label="Экономика", style=disnake.ButtonStyle.danger, custom_id="eco"),
+            disnake.ui.Button(label="Отношения", style=disnake.ButtonStyle.success, custom_id="relaship"),
+            disnake.ui.Button(label="РП", style=disnake.ButtonStyle.danger, custom_id="roleplay"),
+            disnake.ui.Button(label="Настройки", style=disnake.ButtonStyle.success, custom_id="setts")
+        ])
+        #embedyes = disnake.Embed(title="Вы нажали",description="Да",color=0x228b22)
+        #embedno = disnake.Embed(title="Вы нажали",description="Нет",color=disnake.Color.red())
+        embedgames = disnake.Embed(title="🎮 Игры", description="`/guess-the-letter` - Игра в угадай букву\n`/maths-plus` - Игра в математику с сложением\n`/maths-minus` - Игра в математику с вычитанием\n`/maths-multiply` - Игра в математику с умножением\n`/tape` - Игра в рулетку\n`/truth-or-dare` - Игра в п или д\n`/heads-or-tails` - Подбросить монетку\n`/door` - Игра 'Выбери правильную дверь.'\n`/akinator` - Сыграть в акинатора", color=0x228b22)
+        embedmod = disnake.Embed(title="<:cooldown:1047243027166539846> Модерация",description="`/ban [member] <reason>` - Забанить кого-то\n`/unban [member id]` - разбанить кого то\n`/kick [member] <reason>` - Выгнать кого либо с сервера\n`/mute [member] <time>` - Заглушить кого то на сколько то минут\n`/warn [@member] <reason>` - Выдать пред\n`/warns` - Посмотреть все преды на этом сервере\n`/unwarn [номер_случая]` - Снять пред", color=0x228b22)
+        embedutils = disnake.Embed(title="<:Magic:1047241900370956298> Утилиты",description="`/profile` - Увидеть своё кол-во очков и профиль\n`/lgbt` - Делает вам ЛГБТ аватарку\n`/jail` - Делает аватарку, сидящую в тюрьме\n`/passed` - Делает на вашей аватарке надпись \"Mission Passed, respect+\"\n`/wasted` - Делает на вашей аватарке надпись \"WASTED\"\n`/pixelate` - Пиксилизирует ваш аватар\n`/triggered` - Делает на вашей аватарке надпись \"TRIGGERED\"\n`/ussr` - Накладывает на ваш аватар флаг СССР\n`/youtube-comment [коментарий]` - Делает коментарий с вашим ником, аватаром и коментарием\n`/voice [текст]` - Создаёт озвучку указаного вами текста\n`/encode [текст]` - Зашифровать текст в base64\n`/decode [base64]` - Расшифровать base64 в текст\n`/joke <язык>` - Генерирует рандомную шутку(Смешная или нет зависит от АПИ)\n`/poll [sel1] [sel2] <sel...>` - Запустить голосование\n`/new-year` - Через сколько дней новый год?",color=0x228b22)
+        embedeco = disnake.Embed(title="💲 Экономика",description="`/daily` - Получить ежедневную награду, может быть отключена админами\n`/work [!работа]` - Работать чтобы получить деньги, работа выбирается выпадающим списком\n`/balance` - Проверить свой или чужой баланс\n`/add-money [сумма] [участник]` - Выдать 'сумма' валюты пользователю 'участник'\n`/reduce-money [сумма] [участник]` - Забирает 'сумма' валюты у 'участник'а", color=0x228b22)
+        embedrela = disnake.Embed(title="<:pandaElf:1047241340657872948> Отношения",description="`/hug [участник]` - Обнять кого либо.\n`/pat [участник]` - Погладить кого либо",color=0x228b22)
+        embedrp = disnake.Embed(title="<:shockedThinsk4:1047243843541680229> РП",description="`/acc-register [имя]` - Создать нового персонажа\n`/acc-update-avatar [имя]` - Обновить аватар персонажу\n`/acc-all` - Посмотреть весь список персонажей\n`/acc-send [имя] [сообщения]` - Отправить сообщение от имени персонажа",color=0x228b22)
+        embedsetts = disnake.Embed(title="⚙ Настройки",description="`/set-welcome-channel [канал]` - Устанавливает канал для уведомления о новых участниках\n`/set-bye-channel [канал]` - Установить канал для уведомления о ушедших участниках\n`/set-daily [сумма] - Установить сумму ежедневного приза, 0 если отключить`\n`/set-anti-badwords` - Включить анти плохие слова\n`/set-work-price [сумма]` - Установить сумму которая будет выдаваться участника за работу\n`/disable-set [настройка]` - Отключить какую то настройку, настройка выбирается выпадающим списком\n`/ping` - Проверить работоспособность бота",color=0x228b22)
+        embedtime = disnake.Embed(title="Время истекло!",description="Слишком долго не было какой либо активности с кнопками.",color=disnake.Color.red())
+        status = True
+        while status:
+            try:
+                btn = await bot.wait_for("button_click",timeout=80)
+                if btn.component.custom_id == "games":
+                    await ctx.edit_original_response(embed=embedgames)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "mod":
+                    await ctx.edit_original_response(embed=embedmod)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "utils":
+                    await ctx.edit_original_response(embed=embedutils)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "eco":
+                    await ctx.edit_original_response(embed=embedeco)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "relaship":
+                    await ctx.edit_original_response(embed=embedrela)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "roleplay":
+                    await ctx.edit_original_response(embed=embedrp)
+                    await btn.response.defer()
+                elif btn.component.custom_id == "setts":
+                    await ctx.edit_original_response(embed=embedsetts)
+                    await btn.response.defer()
+            except asyncio.TimeoutError:
+                status = False
+                return await ctx.edit_original_response(embed=embedtime,components=None)
+
 
 class Games(commands.Cog):
     def __init__(self, bot):
@@ -348,12 +395,113 @@ class Games(commands.Cog):
         if wars == 0:
             return await ctx.edit_original_response(embed=disnake.Embed(title="Это Решка!",color=0x228b22).set_image(url="https://newcoin.ru/wa-data/public/shop/products/59/08/859/images/3343/3343.970.JPG"))
 
+    @commands.slash_command(name="door",description="Игра - Выбери правильную дверь!")
+    async def door(self, ctx):
+        door = random.choice([1,2,3])
+        components = disnake.ui.Select(placeholder="Выбирайте...", options=[
+            disnake.SelectOption(label="1🚪", value = "1", description="Выбрать первую дверь"),
+            disnake.SelectOption(label="2🚪", value = "2", description="Выбрать вторую дверь"),
+            disnake.SelectOption(label="3🚪", value = "3", description="Выбрать третью дверь")
+        ])
+        await ctx.send(embed=disnake.Embed(title="Выбери правильную дверь",description="Правильная или нет, зависит от твоей удачи...",color=0x228b22), components=components)
+        try:
+            slct = await self.bot.wait_for("message_interaction", timeout=20) # Как я понял(т.к. нет никаких ошибок), ожидание этой строки напросто зависает.
+            if slct.values[0] == str(door):
+                await ctx.edit_original_response(embed=disnake.Embed(title="Вы выбрали правильную дверь!",description="Поздравляю!",color=0x228b22), components=None)
+                await slct.response.defer()
+            else:
+                await ctx.edit_original_response(embed=disnake.Embed(title="Не верно...",description=f"Правильной дверью была {door}. В следующий раз повезёт!", color=disnake.Color.red()), components=None)
+                await slct.response.defer()
+        except asyncio.TimeoutError:
+            await ctx.edit_original_response(embed=disnake.Embed(title="Таймаут истёк!", color=disnake.Color.red()))
+
+    # @commands.slash_command(name="fight",description="Сразиться с другим слабаком!")
+    # async def fight(self, ctx, участник: disnake.Member = commands.Param(description="С кем хотите сразиться?")):
+    #     await ctx.response.defer()
+    #     component = [
+    #         disnake.ui.Button(label="ДА!", style=disnake.ButtonStyle.danger, custom_id="yes"),
+    #         disnake.ui.Button(label="Нет... Я жалкий трусишка...", style=disnake.ButtonStyle.success, custom_id="no")
+    #     ]
+    #     member = участник
+    #     await ctx.send(embed=disnake.Embed(title=f"**{member.name}**`({member.mention})`, готовы ли вы сразиться с **{ctx.author.name}**`({ctx.author.mention})`?",description=f"У вашего врага(`{member.name}`) есть 30 секунд чтобы сделать свой выбор.",color=0x228b22),components=component)
+    #     try:
+    #         def check(msg):
+    #             if not msg.author.id == member.id:
+    #                 await ctx.send(f"{msg.author.mention} а здорово ты это придумал, я даже в начале не понял, молодец!")
+    #             return msg.author.id == member.id
+    #         btn = await bot.wait_for("button_click", check=check, timeout = 30)
+    #         if btn.component.custom_id == "yes":
+    #             await ctx.edit_original_response(embed=disnake.Embed(title="Отлично!",description=f"{member.name} согласился на драку!",color=0x228b22),components=None)
+    #         else:
+    #             return await ctx.edit_original_response(embed=disnake.Embed(title=f"{member.name} оказался жалким трусом",description=f"{member} отказался от драки.",color=disnake.Color.red()),components=None)
+    #     except asyncio.TimeoutError:
+    #         return await ctx.edit_original_response(content=f"{member} проигнорировал запрос на драку.",embed=None,components=None)
+    #     await ctx.edit_original_response(embed=disnake.Embed(title="    **ДРАКА НАЧИНАЕТСЯ!**    ",description=f"    **{member} - 100 hp**    \n    **{ctx.author} - 100hp**    ",color=0x228b22))
+    #     await asyncio.sleep(3)
+    #     await ctx.edit_original_response(embed=disnake.Embed(title="    **ДРАКА ИДЁТ!**    ",description="    **!**    ",color=0x228b22))
+    #     await asyncio.sleep(10)
+    #     text = None
+    #     author = random.randint(0,55)
+    #     memb = random.randint(0,55)
+    #     if author > memb:
+    #         text = f"**{ctx.author} ПОБЕДИЛ {member}**"
+    #     elif author < memb:
+    #         text = f"**{member} ПОБЕДИЛ {ctx.author}**"
+    #     elif author == memb:
+    #         text = f"**Что-ж... У вас ничья!**"
+    #     await ctx.edit_original_response(embed=disnake.Embed(title=text, description=f"    **{ctx.author} - {author}hp**    \n    **{member} - {memb}hp**    "))
+    #     try:
+    #         if author > memb:
+    #             ctx.author.edit(nick=f"ПОБЕДИТЕЛЬ - {ctx.author.name}")
+    #         elif author < memb:
+    #             member.edit(nick=f"ПОБЕДИТЕЛЬ - {member.name}")
+    #     except:
+    #         pass
+
+    @commands.slash_command(name="akinator",description="Сыграйте в акинатора.")
+    async def aki(self, ctx):
+        await ctx.response.defer()
+        aki = Akinator(
+            child_mode=False,
+            theme=Theme.from_str('characters')
+        )
+        first_queston = aki.start_game()
+        stats = True
+        number = 1
+        component = [
+            disnake.ui.Button(label="Да",style=disnake.ButtonStyle.success,custom_id="Yes"),
+            disnake.ui.Button(label="Нет",style=disnake.ButtonStyle.danger,custom_id="No"),
+            disnake.ui.Button(label="Я не знаю",style=disnake.ButtonStyle.success,custom_id="Idk")
+        ]
+        def check(msg):
+            return msg.author.id == ctx.author.id
+        first_queston = translator.translate(first_queston, dest="ru")
+        await ctx.send(embed=disnake.Embed(title=f"Вопрос {number}",description=first_queston.text,color=0x228b22), components=component)
+        while aki.progression <= 80 and stats:
+            try:
+
+                btn = await bot.wait_for("button_click", check=check, timeout=90)
+                #if btn.component.custom_id
+                answer = Answer.from_str(btn.component.custom_id)
+                aki.answer(answer)
+                number += 1
+                await btn.response.defer()
+                await ctx.edit_original_response(embed=disnake.Embed(title=f"Вопрос {number}",description=translator.translate(aki.question, dest="ru").text, color=0x228b22), components=component)
+            except asyncio.TimeoutError:
+                await ctx.send(embed=disnake.Embed(title="Игра закончена!",description="Слишком долго не было взаимодействия с кнопками!"))
+                stats = False
+        win = aki.win()
+        if win:
+            await ctx.edit_original_response(embed=disnake.Embed(title=f"Это {translator.translate(win.name, dest='ru').text}!",description=translator.translate(win.description, dest="ru").text,color=0x228b22).set_image(url = win.absolute_picture_path), components=None)
+            stats = False
+
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @commands.slash_command(name="ban", description="Забанить кого либо")
     @commands.has_permissions(ban_members = True)
+    @commands.bot_has_permissions(ban_members=True)
     async def ban(self, ctx, member: disnake.Member, reason="Была не указана."):
         await ctx.response.defer()
         try:
@@ -365,6 +513,7 @@ class Moderation(commands.Cog):
 
     @commands.slash_command(name="unban", description="Разбанить кого либо.")
     @commands.has_permissions(ban_members = True)
+    @commands.bot_has_permissions(ban_members=True)
     async def unban(self, ctx, member_id):
         await ctx.response.defer()
         try:
@@ -381,6 +530,7 @@ class Moderation(commands.Cog):
 
     @commands.slash_command(name="kick", description="Выгнать кого с сервера.")
     @commands.has_permissions(kick_members = True)
+    @commands.bot_has_permissions(kick_members=True)
     async def kick(self, ctx, member: disnake.Member, reason = "не указана"):
         await ctx.response.defer()
         try:
@@ -395,6 +545,7 @@ class Moderation(commands.Cog):
 
     @commands.slash_command(name="mute",description="Заглушить кого либо на сервере")
     @commands.has_permissions(moderate_members = True)
+    @commands.bot_has_permissions(moderate_members=True)
     async def mute(self, ctx, member: disnake.Member, time: int):
         await ctx.response.defer()
         try:
@@ -420,8 +571,11 @@ class Moderation(commands.Cog):
                 if user == member.id:
                     special = special_id
 
+        datet = datetime.datetime
+        date = datet.utcnow()
+        utc_time = calendar.timegm(date.utctimetuple())
 
-        await ctx.send(embed=disnake.Embed(title="✔Успешно",description=f"Варн успешно нанесён на пользователя {member.mention}!").add_field(name="Номер случая",value=f"{special}"))
+        await ctx.send(embed=disnake.Embed(title="✔Успешно",description=f"Варн успешно нанесён на пользователя {member.mention}!\nПроизошло это <t:{utc_time}:R>").add_field(name="Номер случая",value=f"{special}"))
 
     @commands.slash_command(name="warns",description="Увидеть список варном на этом сервере")
     async def warns(self, ctx):
@@ -466,6 +620,7 @@ class Moderation(commands.Cog):
 
     @commands.slash_command(name="purge",description="Очистить канал")
     @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_messages=True)
     async def purg(self, ctx, count: int = commands.Param(description="Сколько сообщений удалить?")):
         await ctx.response.defer()
         await ctx.channel.purge(limit=int(count))
@@ -544,6 +699,26 @@ class Utils(commands.Cog):
         idraw.text((10, 155), f'{self.bot.user.name} Draw\'s', font=undertext, fill="#ffffff")
         img.save('user_card.png')
         await ctx.send(file=disnake.File("user_card.png"))
+
+    @commands.slash_command(name="jacque",description="Генерирует изображение с популярным Джак Фрэско")
+    async def jacque(self, ctx, текст = commands.Param(description="Что будет говорить Джак Фрэско?")):
+        await ctx.response.defer()
+        cent = 480 / 2
+        cent = cent / len(текст)
+        try:
+            img = Image.new("RGBA", (480, 270), "#000000")
+            r = requests.get("https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/imgonline-com-ua-convertH9QmkkWjlGPN.jpg?v=1671019870556", stream=True)
+            r = Image.open(io.BytesIO(r.content))
+            r = r.convert("RGBA")
+            img.paste(r, (0,0,480,270))
+            draw = ImageDraw.Draw(img)
+            font = ImageFont.truetype("ComicSans.ttf", size=20)
+            draw.text((cent,135), f"{текст}", font=font, fill="#000000")
+            draw.text((10, 240), f"{self.bot.user.name} Draw\'s", font=font, fill="#000000")
+            img.save("jacque.png")
+        except:
+            return await ctx.send(embed=disnake.Embed(title="❌Ошибка",description="Не удалось выполнить данное действие.",color=disnake.Color.red()))
+        await ctx.send(file=disnake.File("jacque.png"))
 
     @commands.slash_command(name="passed", description="Делает вашу аватарку в стиль GTA, миссия выполнена")
     async def passed(self, ctx, участник: disnake.Member = None):
@@ -644,6 +819,14 @@ class Utils(commands.Cog):
         json_load = json.loads(request.text)
         await ctx.send(embed=disnake.Embed(title="🔍Результат",description=json_load["text"],color=0x228b22))
 
+    @commands.slash_command(name="joke",description="Возвращает шутку")
+    async def joke(self, ctx, язык = commands.Param(default="ru", description="На каком языке вы хотите увидеть шутку?", choices = [disnake.OptionChoice("Русский","ru"),disnake.OptionChoice("English","en"),disnake.OptionChoice("Украiньска","uk")])):
+        await ctx.response.defer()
+        api_result = requests.get("https://some-random-api.ml/others/joke")
+        results = json.loads(api_result.text)
+        text = translator.translate(results["joke"], dest=язык)
+        await ctx.send(embed=disnake.Embed(title=f"{text.text}",description="Шутка взята с сайта **None**"))
+
     @commands.slash_command(name="poll",description="Запустить голосование.")
     async def poll(self, ctx, заголовок, sel1, sel2, sel3 = None, sel4 = None, sel5 = None, sel6 = None, sel7 = None, sel8 = None, sel9 = None, sel10 = None):
         await ctx.response.defer()
@@ -658,19 +841,28 @@ class Utils(commands.Cog):
                 count += 1
                 lis_count += 1
         text_af = "\n".join(list(map(str, text)))
-        msg = await ctx.send(embed=disnake.Embed(title=f"{заголовок}",description=text_af, color=0x228b22))
-        if lis_count >= 1: await ctx.response.add_reaction("1️⃣")
-        if lis_count >= 2: await ctx.response.add_reaction("2️⃣")
-        if lis_count >= 3: await ctx.response.add_reaction("3️⃣")
-        if lis_count >= 4: await ctx.response.add_reaction("4️⃣")
-        if lis_count >= 5: await ctx.response.add_reaction("5️⃣")
-        if lis_count >= 6: await ctx.response.add_reaction("6️⃣")
-        if lis_count >= 7: await ctx.response.add_reaction("7️⃣")
-        if lis_count >= 8: await ctx.response.add_reaction("8️⃣")
-        if lis_count >= 9: await ctx.response.add_reaction("9️⃣")
-        if lis_count >= 10: await ctx.response.add_reaction("🔟")
+        msg = await ctx.send(embed=disnake.Embed(title=f"Пожалуйста, отправьте сообщение для голосовании",description="Я поставлю на это сообщение реакций для голосования", color=0x228b22))
+        try:
+            def check(msg):
+                return msg.guild.id == ctx.guild.id and msg.author.id == ctx.author.id
+            msg = await self.bot.wait_for("message", check=check, timeout=60)
+            await ctx.edit_original_response(embed=disnake.Embed(title=заголовок,description=text_af,color=0x228b22))
+            if lis_count >= 1: await msg.add_reaction("1️⃣")
+            if lis_count >= 2: await msg.add_reaction("2️⃣")
+            if lis_count >= 3: await msg.add_reaction("3️⃣")
+            if lis_count >= 4: await msg.add_reaction("4️⃣")
+            if lis_count >= 5: await msg.add_reaction("5️⃣")
+            if lis_count >= 6: await msg.add_reaction("6️⃣")
+            if lis_count >= 7: await msg.add_reaction("7️⃣")
+            if lis_count >= 8: await msg.add_reaction("8️⃣")
+            if lis_count >= 9: await msg.add_reaction("9️⃣")
+            if lis_count >= 10: await msg.add_reaction("🔟")
+        except asyncio.TimeoutError:
+            await ctx.edit_original_response(embed=disnake.Embed(title="Вы слишком долго отправляли сообщение!",description="❌Ошибка",color=disnake.Color.red()))
 
-
+    @commands.slash_command(name="new-year",description="Через сколько дней новый год?")
+    async def new_year(self, ctx):
+        await ctx.send(embed=disnake.Embed(title="С наступающим новым годом!🎉",description="Новый год уже <t:1672520400:R>",color=0x4500ff))
 
 class BotSettings(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -825,6 +1017,37 @@ class Economy(commands.Cog):
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id))
         await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Вы получили свой ежедневный бонус, следующий бонус вы получите через 72000 секунд(20ч)!",color=0x228b22))
 
+    @commands.slash_command(name="add-money", description="Добавить деньги на счёт какого либо пользователя")
+    @commands.has_permissions(moderate_members = True)
+    async def add_money(self, ctx, участник: disnake.Member, сумма: int):
+        await ctx.response.defer()
+        summ = 0
+        with sqlite3.connect("database.db") as db:
+            cursor = db.cursor()
+            cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (сумма, ctx.guild.id, участник.id))
+            for guild, user, suma in cursor.execute("SELECT * FROM balances WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, участник.id)):
+                if guild == ctx.guild.id:
+                    if user == участник.id:
+                        summ = suma
+
+        await ctx.send(embed=disnake.Embed(title="✅Успешно",description=f"Теперь у участника {summ}<:dollar:1051974269296451684>!",color=0x228b22))
+
+    @commands.slash_command(name="reduce-money", description="Убавить деньги со счёта какого либо пользователя либо всего сервера.")
+    @commands.has_permissions(moderate_members = True)
+    async def reduce_money(self, ctx, сумма: int = commands.Param(description="Какую сумму хотите забрать? Укажите 0 если всю"), участник: disnake.Member = commands.Param(description="Укажите у какого участника, не указывайте если у всего сервера")):
+        await ctx.response.defer()
+        if сумма == 0:
+            сумма = 99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+        summ = 0
+        with sqlite3.connect("database.db") as db:
+            cursor = db.cursor()
+            cursor.execute("UPDATE balances SET user_balance = user_balance - ? WHERE guild_id = ? AND user_id = ?", (сумма, ctx.guild.id, участник.id))
+            for guild, user, suma in cursor.execute("SELECT * FROM balances WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, участник.id)):
+                if guild == ctx.guild.id:
+                    if user == участник.id:
+                        summ = suma
+        await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Теперь у пользователя {} <:dollar:1051974269296451684>!".format(suma), color=0x228b22))
+
     @commands.slash_command(name="ping",description="Проверка на работоспособность бота.")
     async def ping(self, ctx):
         ping = int(self.bot.latency * 1000)
@@ -879,16 +1102,22 @@ class RolePlayHelps(commands.Cog):
         self.bot = bot
 
     @commands.slash_command(name="acc-register", description="Создать нового персонажа для рп")
+    @commands.bot_has_permissions(manage_webhooks = True)
     async def acc_reg(self, ctx, имя = commands.Param(description="Какое имя будет у персонажа?")):
         await ctx.response.defer()
         channel_webhooks = await ctx.channel.webhooks()
         for webhook in channel_webhooks:
             if webhook.user == bot.user and webhook.name == имя:
                 return await ctx.send(embed=disnake.Embed(title="❌Ошибка",description="Такой персонаж уже вроде существует, не?",color=disnake.Color.red()))
-        webhook = await ctx.channel.create_webhook(name=имя)
-        await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Теперь используя никнейм персонажа, вы можете отправлять сообщения от его имени в этом канале!",color=0x228b22))
+        try:
+            webhook = await ctx.channel.create_webhook(name=имя)
+        except disnake.errors.HTTPException:
+            await ctx.send("Слишком много HTTP запросов на данный момент, простите...")
+        else:
+            await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Теперь используя никнейм персонажа, вы можете отправлять сообщения от его имени в этом канале!",color=0x228b22))
 
     @commands.slash_command(name="acc-send",description="Отправить что то от имени персонажа")
+    @commands.bot_has_permissions(manage_webhooks = True)
     async def acc_send(self, ctx, имя = commands.Param(description="Напомните мне имя вашего персонажа..."), сообщение = commands.Param(description="Что хотите отправить?")):
         #await ctx.response.defer()
         channel_webhooks = await ctx.channel.webhooks()
@@ -900,17 +1129,21 @@ class RolePlayHelps(commands.Cog):
         if not my_webhook:
             return await ctx.send(embed=disnake.Embed(title="❌Ошибка",description="Такого персонажа не существует!",color=disnake.Color.red()), ephemeral=True)
         try:
-            avatar_url = Memory.read(f"avatars/{ctx.channel.id}{имя}webhook.txt")
-        except:
-            avatar_url = None
-        if not avatar_url:
-            await my_webhook.send(content = сообщение)
+            try:
+                avatar_url = Memory.read(f"avatars/{ctx.channel.id}{имя}webhook.txt")
+            except:
+                avatar_url = None
+            if not avatar_url:
+                await my_webhook.send(content = сообщение)
+            else:
+                await my_webhook.send(content=сообщение, avatar_url=avatar_url)
+        except disnake.errors.HTTPException:
+            await ctx.send("Слишком много HTTP запросов на данный момент, простите...")
         else:
-            await my_webhook.send(content=сообщение, avatar_url=avatar_url)
-        await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Вы отправили своё сообщение от имени персонажа!",color=0x228b22),ephemeral=True)
-
+            await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Вы отправили своё сообщение от имени персонажа!",color=0x228b22),ephemeral=True)
 
     @commands.slash_command(name="acc-update-avatar",description="Изменить аватар персонажу")
+    @commands.has_permissions(manage_webhooks = True)
     async def acc_upd_atar(self, ctx, имя = commands.Param(description="Какому персонажа меняем аватар?")):
         await ctx.response.defer()
         channel_webhooks = await ctx.channel.webhooks()
@@ -937,7 +1170,8 @@ class RolePlayHelps(commands.Cog):
         await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Аватар я запомнил, пора придумывать рп!").add_field(name="Ссылка",value=f"[**Клик**]({Memory.read(f'avatars/{ctx.channel.id}{имя}webhook.txt')})"))
 
     @commands.slash_command(name="acc-remove",description="Удалить персонажа")
-    @commands.has_permissions(manage_guild = True)
+    @commands.has_permissions(manage_webhooks = True)
+    @commands.bot_has_permissions(manage_webhooks = True)
     async def acc_rem(self, ctx, имя = commands.Param(description="Какого персонажа удаляем?")):
         my_webhook = None
         channel_webhooks = await ctx.channel.webhooks()
@@ -946,10 +1180,15 @@ class RolePlayHelps(commands.Cog):
                 my_webhook = webhook
         if not my_webhook:
             return await ctx.send(embed=disnake.Embed(title="❌Ошибка",description="Такого персонажа не существует!",color=disnake.Color.red()), ephemeral=True)
-        await my_webhook.delete()
-        if os.path.isfile(f"avatars/{ctx.channel.id}{имя}webhook.txt"):
-            os.remove(f"avatars/{ctx.channel.id}{имя}webhook.txt")
-        await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Этого персонажа больше нет в этом канале!"))
+        try:
+            await my_webhook.delete()
+            if os.path.isfile(f"avatars/{ctx.channel.id}{имя}webhook.txt"):
+                os.remove(f"avatars/{ctx.channel.id}{имя}webhook.txt")
+
+        except disnake.errors.HTTPException:
+            await ctx.send("Слишком много HTTP запросов на данный момент, простите...")
+        else:
+            await ctx.send(embed=disnake.Embed(title="✅Успешно",description="Этого персонажа больше нет в этом канале!"))
 
 
     @commands.slash_command(name="acc-all",description="Посмотреть всех существующих персонажей в канале")
@@ -974,6 +1213,80 @@ bot.add_cog(Economy(bot))
 bot.add_cog(Relationships(bot))
 bot.add_cog(RolePlayHelps(bot))
 
+@bot.user_command(name="Инфо о пользователе")
+async def infouser(ctx, member: disnake.User):
+    #await ctx.send(embed=disnake.Embed(title=f"Инфо о пользователе **{user.name}**",description=f"Никнеим: **{user.name}#{user.discriminator}**\nID: **{user.id}**"))
+    await ctx.response.defer()
+    scopes = 0
+    try:
+        scopes = Memory.read(f"scope/{member.id}balls.txt")
+    except:
+        scopes = 0
+    balance = 0
+    users = None
+    with sqlite3.connect("database.db") as db:
+        cursor = db.cursor()
+        for guild, user, bal in cursor.execute("SELECT * FROM balances"):
+            if guild == ctx.guild.id:
+                if user == member.id:
+                    users = user
+                    balance = bal
+    if not users:
+        with sqlite3.connect("database.db") as db:
+            cursor = db.cursor()
+            cursor.execute("INSERT INTO balances VALUES(?, ?, ?)", (ctx.guild.id, member.id, 0))
+        balance = 0
+    if not balance:
+        balance = 0
+    t = member.status
+    if t == disnake.Status.online:
+        d = "🟢 В сети"
+
+    t = member.status
+    if t == disnake.Status.offline:
+        d = "⚪ Не в сети"
+
+    t = member.status
+    if t == disnake.Status.idle:
+        d = "🟠 Не активен"
+
+    t = member.status
+    if t == disnake.Status.dnd:
+        d = "🔴 Не беспокоить"
+
+    img = Image.new('RGBA', (500, 170), '#000000')
+    backgr = ["https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/1614397342_47-p-temnii-multyashnii-fon-64.png?v=1670188383348","https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/1622768497_26-phonoteka_org-p-noch-art-minimalizm-krasivo-28.png?v=1670188403979","https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/i.png?v=1670188415480"]
+    r = requests.get(random.choice(backgr), stream = True)
+    r = Image.open(io.BytesIO(r.content))
+    r = r.convert("RGBA")
+    r = r.resize((500, 170))
+    img.paste(r, (0, 0, 500, 170))
+    url = str(member.avatar.url)
+    r = requests.get(url, stream = True)
+    r = Image.open(io.BytesIO(r.content))
+    r = r.convert('RGBA')
+    r = r.resize((100, 100))
+    img.paste(r, (15, 15, 115, 115))
+    idraw = ImageDraw.Draw(img)        
+    name = member.name
+    headline = ImageFont.truetype('comfortaa.ttf', size = 25)
+    undertext = ImageFont.truetype('comfortaa.ttf', size = 13)
+    idraw.text((125, 15), f'{name}', font=headline, fill="#ffffff")
+    idraw.text((125, 50), f'#{member.discriminator}', font=undertext, fill="#ffffff")
+    idraw.text((125, 70), f'ID: \n{member.id}', font = undertext, fill="#ffffff")
+    idraw.text((125, 110), f'Статус: {d}', font = undertext, fill="#ffffff")
+    idraw.text((125, 130), f"Кол-во очков: {scopes}", font = undertext, fill="#ffffff")
+    idraw.text((125, 150), f"Баланс: {int(balance)}", font=undertext, fill="#ffffff")
+    idraw.text((10, 155), f'{bot.user.name} Draw\'s', font=undertext, fill="#ffffff")
+    img.save('user_card.png')
+    await ctx.send(file=disnake.File("user_card.png"))
+
+@bot.user_command(name="Поприветствовать")
+async def infouser(ctx, member: disnake.User):
+    await ctx.response.defer()
+    sents = [f"На сервере объявился {member.mention}. Попросите его заказать пиццу для сервера **{member.guild.name}**!",f"У нас новенький, {member.mention}, представься, пускай тебя узнает сервер **{member.guild.name}**!",f"{member.mention} пришёл на сервер, познакомься со сервером **{member.guild.name}**"]
+    await ctx.send(random.choice(sents))
+
 @bot.event
 async def on_ready():
     await bot.change_presence(status=disnake.Status.idle, activity=disnake.Activity(type=disnake.ActivityType.watching, name=f"Привет! Я Вэкс, и я стану твоим волком 💜. [{len(bot.guilds)}]"))
@@ -982,9 +1295,10 @@ async def on_ready():
 
         cursor.execute("CREATE TABLE IF NOT EXISTS warns(special_id INTEGER PRIMARY KEY, guild_id INTEGER, user_id INTEGER, reason TEXT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS balances(guild_id INTEGER, user_id INTEGER, user_balance INTEGER)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS sugestions(guild_id INTEGER, sugestion TEXT)")
         #db.execute('SET NAMES warns;')
         #db.execute('SET CHARACTER SET balances;')
-    print("---------------------------\n•Всё готово\n•Версия кода 1.6.1\n•Python Engine•\n---------------------------")
+    print("---------------------------\n•Всё готово\n•Версия кода 1.6.2\n•Python Engine•\n---------------------------")
 
 @bot.event
 async def on_guild_join(guild):
@@ -1048,38 +1362,52 @@ async def on_member_remove(member):
 
 @bot.event
 async def on_message(msg):
-    if bot.user.mentioned_in(msg):
-        if msg.content.startswith("!"):
-            sfhg = 0
-        else:
-            await msg.reply("<:santa_ping:1047241161594642522>")
-    await bot.process_commands(msg)
     if msg.author.bot:
         return
+    #return await msg.reply(embed=disnake.Embed(title="❌Неизвестная ошибка",description="Обратитесь к администраций",color=disnake.Color.red()))
+    await bot.process_commands(msg)
     content = msg.content.lower()
-    bad_words = ["сука","ёбаный","блять","пидор","бля","ебать","нахуй","хуй","заебал","заебись","ахуенно","ахуено","пиздюк","нахуя","хуйня","ёбаный","ебаный","лошара","лох","пиздец","пздц","пизда"]
+    bad_words = ["сука","ёбаный","блять","пидор","бля","ебать","нахуй","хуй","заебал","заебись","ахуенно","ахуено","пиздюк","нахуя","хуйня","ёбаный","ебаный","лошара","лох","пиздец","пздц","пизда","педик","канаве","мудила","мудак","конченный","конченый","кончаю","конча","шлюха","гей","лесби","лесбиянка","трах","трахаться","сосаться","ебаться"]
     words_content = content.split()
     try:
         Memory.read(f"badwords/{msg.guild.id}.txt")
     except:
-        return
-    for word in words_content:
-        if word in bad_words:
+        pass
+    else:
+        for word in words_content:
+            if word in bad_words:
+                member = msg.author
+                reason = "Автомод: Плохие слова"
+                with sqlite3.connect("database.db") as db:
+                    cursor = db.cursor()
+                    cursor.execute("INSERT INTO warns(guild_id, user_id, reason) VALUES(?, ?, ?)", (msg.guild.id, member.id, reason))
+                await msg.delete()
+                await msg.channel.send(f"<:policePanda:1047242230651437077> {msg.author.mention} На этом сервере запрещены плохие слова! Вам вынесен варн в виде наказания.")
+        verotnst = fuzz.ratio(words_content, bad_words)
+        if verotnst > 50:
             member = msg.author
             reason = "Автомод: Плохие слова"
             with sqlite3.connect("database.db") as db:
                 cursor = db.cursor()
                 cursor.execute("INSERT INTO warns(guild_id, user_id, reason) VALUES(?, ?, ?)", (msg.guild.id, member.id, reason))
             await msg.delete()
-            return await msg.channel.send(f"<:policePanda:1047242230651437077> {msg.author.mention} На этом сервере запрещены плохие слова! Вам вынесен варн в виде наказания.")
-    verotnst = fuzz.ratio(words_content, bad_words)
-    if verotnst > 50:
-        member = msg.author
-        reason = "Автомод: Плохие слова"
-        with sqlite3.connect("database.db") as db:
-            cursor = db.cursor()
-            cursor.execute("INSERT INTO warns(guild_id, user_id, reason) VALUES(?, ?, ?)", (msg.guild.id, member.id, reason))
-        await msg.delete()
-        return await msg.channel.send(f"<:policePanda:1047242230651437077> {msg.author.mention} На этом сервере запрещены плохие слова! Вам вынесен варн в виде наказания.")
+            await msg.channel.send(f"<:policePanda:1047242230651437077> {msg.author.mention} На этом сервере запрещены плохие слова! Вам вынесен варн в виде наказания.")
+    webhooks = await msg.channel.webhooks()
+    for webhook in webhooks:
+        if webhook.user == bot.user:
+            if msg.content.startswith(webhook.name):
+                try:
+                    url = None
+                    try:
+                        url = Memory.read(f"avatars/{msg.channel.id}{webhook.name}webhook.txt")
+                    except:
+                        await webhook.send(content = msg.content[len(webhook.name) + 1:])
+                        await msg.delete()
+                    else:
+                        await webhook.send(content = msg.content[len(webhook.name) + 1:], avatar_url=url)
+                        await msg.delete()
+                except disnake.errors.HTTPException:
+                    await msg.reply("Слишком много HTTPS запросов на данный момент, простите...")
 
-bot.run("Put your token here")
+
+bot.run("Secret")
