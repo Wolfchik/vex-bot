@@ -28,13 +28,12 @@ from yandex_music.client import Client
 from yandex_music.utils.request import Request
 from yandex_music.exceptions import NetworkError
 client = None
-request = Request(proxy_url='http://r2PGiPFL:2MdwvUt9@195.245.103.194:62986')
-client = Client("y0_AgAAAABCYqrDAAG8XgAAAADWMujSSbuFlQssRKSr1s1FW9hf-KoRuaE", request=request).init()
+request = Request(proxy_url='proxy')
+client = Client("ya/token", request=request).init()
 print("yandex_music: Success Connect")
 translator = googletrans.Translator()
 
 
-#client = Client("y0_AgAAAABCYqrDAAG8XgAAAADWMujSSbuFlQssRKSr1s1FW9hf-KoRuaE").init()
 lists = []
 
 class searchError(Exception):
@@ -1662,4 +1661,4 @@ async def on_message(msg):
                     await msg.reply("Слишком много HTTPS запросов на данный момент, простите...")
 
 
-bot.run("MTA0NzEyNTU5MjIyMDM3MzA3NQ.Gy_mly.4x9K-FSMbtBxMVJUYFtBzDTHJZFEf7d7dJoEvw")
+bot.run("BotToken")
