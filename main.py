@@ -28,8 +28,8 @@ from yandex_music.client import Client
 from yandex_music.utils.request import Request
 from yandex_music.exceptions import NetworkError
 client = None
-request = Request(proxy_url='proxy')
-client = Client("ya/token", request=request).init()
+request = Request(proxy_url='proxy_url')
+client = Client("yandexToken", request=request).init()
 print("yandex_music: Success Connect")
 translator = googletrans.Translator()
 
@@ -73,15 +73,10 @@ class Song(disnake.PCMVolumeTransformer):
         stats = True
         while stats:
             try:
-                client.tracks(track['id'])[0].download(f"songs/{ctx.guild.id}.mp3")
+                client.tracks(track['id'])[0].download(f"songs/{track['id']}.mp3")
                 stats = False
             except NetworkError:
                 pass
-
-    # def check_playing(ctx):
-    #     voice_state = ctx.guild.voice_client
-    #     if not voice_state: return raise VoiceStateError("Not voice_state")
-    #     if not voice_state.is_playing(): return raise VoiceStateError("Not playing")
 
 
     async def join_channel(ctx):
@@ -112,10 +107,12 @@ class Song(disnake.PCMVolumeTransformer):
         else:
             return "notState"
 
+
     async def my_after(ctx):
         #os.remove(f"songs/{ctx.guild.id}.mp3")
         voice_state = ctx.guild.voice_client
         if not voice_state.is_playing:
+            stats = False
             names = []
             requesters = []
             artists = []
@@ -140,9 +137,17 @@ class Song(disnake.PCMVolumeTransformer):
                         lyrics.append(ly)
                 c.execute("DELETE FROM songs WHERE guild = ? AND position = ?", (guilds[0], positions[0],))
                 print("Success removed")
-            if positions[1]:
-                Song.download_track(ctx, {"id": ids[1]})
+            whats = False
+            try:
+                whats = positions[1]
+                whats = True
+            except:
+                whats = False
+                return
+            if whats:
+                #Song.download_track(ctx, {"id": ids[1], "title": names[1], "artist": artists[1], "albumid": albumids[1], "lyrics": lyrics[1]})
                 await Song.play(ctx)
+
 
     async def play_next(ctx):
         names = []
@@ -169,8 +174,12 @@ class Song(disnake.PCMVolumeTransformer):
                     lyrics.append(ly)
             c.execute("DELETE FROM songs WHERE guild = ? AND position = ?", (guilds[0], positions[0],))
             print("Success removed")
-        if positions[1]:
-            Song.download_track(ctx, {"id": ids[1], "title": names[1], "artist": artists[1], "albumid": albumids[1], "lyrics": lyrics[1]})
+        try:
+            gsdg = positions[1]
+        except:
+            return
+        else:
+            #Song.download_track(ctx, {"id": ids[1], "title": names[1], "artist": artists[1], "albumid": albumids[1], "lyrics": lyrics[1]})
             await Song.play(ctx)
 
 
@@ -184,14 +193,20 @@ class Song(disnake.PCMVolumeTransformer):
         voice_state = ctx.guild.voice_client
         if voice_state.is_playing():
             return "alreadyPlay"
-        voice_state.play(disnake.FFmpegPCMAudio(f"songs/{ctx.guild.id}.mp3"), after=await Song.my_after(ctx))
-        return None
-
-    def add_queue(ctx, track):
+        ids = []
         with sqlite3.connect("database.db") as db:
-            cursor = db.cursor()
-            cursor.execute("INSERT INTO songs(name, requester, author, id, albumid, lyrics, guild) VALUES(?, ?, ?, ?, ?, ?, ?)", (track['title'],ctx.author.id,track['artist'],track['id'],track['albumid'],track['lyrics'],ctx.guild.id,))
-            print("Success queued")
+            c = db.cursor()
+            for n, r, a, i, ai, ly, g, p in c.execute("SELECT * FROM songs WHERE guild = ?", (ctx.guild.id,)):
+                ids.append(i)
+        if not os.path.isfile(f"songs/{ids[0]}.mp3"):
+            Song.download_track(ctx, {'id': ids[0]})
+        # loop = asyncio.get_running_loop().create_task(Song.my_after(ctx))
+        # asyncio.set_event_loop(loop)
+        # loop = asyncio.new_event_loop()
+        # loop.run_forever(Song.my_after(ctx, loop))
+        voice_state.play(disnake.FFmpegPCMAudio(f"songs/{ids[0]}.mp3"))
+
+        return None
 
     async def skip(ctx):
         voice_state = ctx.guild.voice_client
@@ -254,10 +269,20 @@ class Song(disnake.PCMVolumeTransformer):
         "uri": f"https://music.yandex.ru/album/{ids[0]}/track/{albumids[0]}"
         }
 
-
-
-
-
+    def construct_queue(ctx):
+        urls = []
+        names = []
+        positions = []
+        texts = []
+        with sqlite3.connect("database.db") as db:
+            c = db.cursor()
+            for n, r, a, i, ai, ly, g, p in c.execute("SELECT * FROM songs WHERE guild = ?", (ctx.guild.id,)):
+                names.append(n)
+                positions.append(p)
+                urls.append(f"https:/music.yandex.ru/album/{ai}/track/{i}")
+                texts.append(f"`{p}.` [**{n}**](https:/music.yandex.ru/album/{ai}/track/{i})")
+        if texts == []: return None
+        return "\n".join(list(map(str, texts)))
 
 class Music(commands.Cog):
     def __init__(self, bot):
@@ -282,35 +307,35 @@ class Music(commands.Cog):
         await ctx.send(embed=disnake.Embed(title="<:correctCheckmark:1047244074350018700> Успешно",description="Пока-пока!",color=0x228b22))
 
     @commands.slash_command(name="play",description="Воспроизвести трек")
-    async def _play(self, ctx, название: str):
+    async def _play(self, ctx, название: str = None):
         await ctx.response.defer()
         name = название
-        if name.startswith("https://"):
+        if name and name.startswith("https://"):
             return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Я не поддерживаю ссылки!",color=disnake.Color.red()))
         voice_state = ctx.guild.voice_client
-        try:
-            track = Song.search_tracks(ctx, name)
-        except searchError:
-            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Ничего не нашлось :(",color=disnake.Color.red()))
+        if name:
+            try:
+                track = Song.search_tracks(ctx, name)
+            except searchError:
+                return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Ничего не нашлось :(",color=disnake.Color.red()))
+        else:
+            text = Song.construct_queue(ctx)
+            if not text:
+                return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Очередь на этом сервере пуста, поэтому добавьте что то в неё!",color=disnake.Color.red()))
         if voice_state:
             if voice_state.is_playing():
                 #await Song.leave_channel(ctx)
                 pass
             else:
-                Song.download_track(ctx, track)
                 error = await Song.play(ctx)
         else:
-            Song.download_track(ctx, track)
             error = await Song.play(ctx)
             if error:
                 if error == "notChannel": return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Зайдите в голосовой канал.",color=disnake.Color.red()))
-        embed = disnake.Embed(title=track['title'],color=0x228b22)
-        embed.add_field(name="Главный Автор:",value=f"{track['artist']}\n")
-        embed.add_field(name="Предложил:",value=f"{ctx.author.mention}\n")
-        embed.add_field(name="Источник:",value="<:yandexMusic:1056924402790436934> Yandex Music\n")
-        embed.add_field(name="Ссылка:",value=f"[**Это кликабельная ссылка!**](https://music.yandex.ru/album/{track['albumid']}/track/{track['id']})")
-        embed.set_footer(text=f"Нравится качество воспроизведения? Поддержите нас при помощи команды /donate !")
-        await ctx.send(f"{track['title']} успешно добавлена в очередь!")
+        if name:
+            await ctx.send(f"{track['title']} успешно добавлена в очередь!")
+        else:
+            await ctx.send(f"**{self.bot.user.name}** успешно начал воспроизведение очереди!")
 
 
     @commands.slash_command(name="skip",description="Пропустить трек")
@@ -344,6 +369,13 @@ class Music(commands.Cog):
         else:
             await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка!",description="Сейчас ничего не играет",color=disnake.Color.red()))
 
+    @commands.slash_command(name="queue", description="Посмотреть очередь")
+    async def queu(self, ctx):
+        text = Song.construct_queue(ctx)
+        if not text:
+            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Очередь на этом сервере пуста!",color=disnake.Color.red()))
+        await ctx.send(embed=disnake.Embed(title=f"Очередь сервера {ctx.guild.name}!",description=text, color=0x228b22))
+
 class Main(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -368,10 +400,10 @@ class Main(commands.Cog):
         #embedyes = disnake.Embed(title="Вы нажали",description="Да",color=0x228b22)
         #embedno = disnake.Embed(title="Вы нажали",description="Нет",color=disnake.Color.red())
         
-        embedmus = disnake.Embed(title="<:yandexMusic:1056924402790436934> Яндекс.Музыка",description="`/play [название]` - Начать воспроизведение в голосовом канале\n`/skip` - Пропустить трек\n`/stop` - Остановить и выйти из голосового канала",color=0x228b22)
+        embedmus = disnake.Embed(title="<:yandexMusic:1056924402790436934> Яндекс.Музыка",description="`/play <название>` - Начать воспроизведение в голосовом канале\n`/skip` - Пропустить трек\n`/stop` - Остановить и выйти из голосового канала\n`/join` - Пригласить бота в голосовой канал\n`/queue` - Посмотреть очередь серверва\n`/now-playing` - что сейчас играет?",color=0x228b22)
         embedgames = disnake.Embed(title="🎮 Игры", description="`/guess-the-letter` - Игра в угадай букву\n`/maths-plus` - Игра в математику с сложением\n`/maths-minus` - Игра в математику с вычитанием\n`/maths-multiply` - Игра в математику с умножением\n`/tape` - Игра в рулетку\n`/truth-or-dare` - Игра в п или д\n`/heads-or-tails` - Подбросить монетку\n`/door` - Игра 'Выбери правильную дверь.'\n`/akinator` - Сыграть в акинатора", color=0x228b22)
         embedmod = disnake.Embed(title="<:cooldown:1047243027166539846> Модерация",description="`/ban [member] <reason>` - Забанить кого-то\n`/unban [member id]` - разбанить кого то\n`/kick [member] <reason>` - Выгнать кого либо с сервера\n`/mute [member] <time>` - Заглушить кого то на сколько то минут\n`/warn [@member] <reason>` - Выдать пред\n`/warns` - Посмотреть все преды на этом сервере\n`/unwarn [номер_случая]` - Снять пред", color=0x228b22)
-        embedutils = disnake.Embed(title="<:Magic:1047241900370956298> Утилиты",description="`/profile` - Увидеть своё кол-во очков и профиль\n`/lgbt` - Делает вам ЛГБТ аватарку\n`/jail` - Делает аватарку, сидящую в тюрьме\n`/passed` - Делает на вашей аватарке надпись \"Mission Passed, respect+\"\n`/wasted` - Делает на вашей аватарке надпись \"WASTED\"\n`/pixelate` - Пиксилизирует ваш аватар\n`/triggered` - Делает на вашей аватарке надпись \"TRIGGERED\"\n`/ussr` - Накладывает на ваш аватар флаг СССР\n`/youtube-comment [коментарий]` - Делает коментарий с вашим ником, аватаром и коментарием\n`/voice [текст]` - Создаёт озвучку указаного вами текста\n`/encode [текст]` - Зашифровать текст в base64\n`/decode [base64]` - Расшифровать base64 в текст\n`/joke <язык>` - Генерирует рандомную шутку(Смешная или нет зависит от АПИ)\n`/poll [sel1] [sel2] <sel...>` - Запустить голосование\n`/new-year` - Через сколько дней новый год?",color=0x228b22)
+        embedutils = disnake.Embed(title="<:Magic:1047241900370956298> Утилиты",description="`/profile` - Увидеть своё кол-во очков и профиль\n`/lgbt` - Делает вам ЛГБТ аватарку\n`/jail` - Делает аватарку, сидящую в тюрьме\n`/passed` - Делает на вашей аватарке надпись \"Mission Passed, respect+\"\n`/wasted` - Делает на вашей аватарке надпись \"WASTED\"\n`/pixelate` - Пиксилизирует ваш аватар\n`/triggered` - Делает на вашей аватарке надпись \"TRIGGERED\"\n`/ussr` - Накладывает на ваш аватар флаг СССР\n`/youtube-comment [коментарий]` - Делает коментарий с вашим ником, аватаром и коментарием\n`/voice [текст]` - Создаёт озвучку указаного вами текста\n`/encode [текст]` - Зашифровать текст в base64\n`/decode [base64]` - Расшифровать base64 в текст\n`/joke <язык>` - Генерирует рандомную шутку(Смешная или нет зависит от АПИ)\n`/poll [sel1] [sel2] <sel...>` - Запустить голосование\n`/random [вариации]` - Рандомайзер\n`/new-year` - Через сколько дней новый год?",color=0x228b22)
         embedeco = disnake.Embed(title="<:dollar:1051974269296451684> Экономика",description="`/daily` - Получить ежедневную награду, может быть отключена админами\n`/work [!работа]` - Работать чтобы получить деньги, работа выбирается выпадающим списком\n`/balance` - Проверить свой или чужой баланс\n`/add-money [сумма] [участник]` - Выдать 'сумма' валюты пользователю 'участник'\n`/reduce-money [сумма] [участник]` - Забирает 'сумма' валюты у 'участник'а", color=0x228b22)
         embedrela = disnake.Embed(title="<:pandaElf:1047241340657872948> Отношения",description="`/hug [участник]` - Обнять кого либо.\n`/pat [участник]` - Погладить кого либо",color=0x228b22)
         embedrp = disnake.Embed(title="<:shockedThinsk4:1047243843541680229> РП",description="`/acc-register [имя]` - Создать нового персонажа\n`/acc-update-avatar [имя]` - Обновить аватар персонажу\n`/acc-all` - Посмотреть весь список персонажей\n`/acc-send [имя] [сообщения]` - Отправить сообщение от имени персонажа",color=0x228b22)
@@ -1083,6 +1115,13 @@ class Utils(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.edit_original_response(embed=disnake.Embed(title="Вы слишком долго отправляли сообщение!",description="<:wrongCheckmark:1047244133078675607>Ошибка",color=disnake.Color.red()))
 
+    @commands.slash_command(name="random",description="Хотите выбрать что то рандомное? Используйте команду!")
+    async def rando(self, ctx, вариации = commands.Param(description="Укажите вариации через пробел.")):
+        select = random.choice(вариации.split())
+        await ctx.send(embed=disnake.Embed(title="Я выбираю...", color=0x228b22))
+        await asyncio.sleep(3)
+        await ctx.edit_original_response(embed=disnake.Embed(title="Я выбираю",description=select + "!",color=0x228b22))
+
     @commands.slash_command(name="new-year",description="Через сколько дней новый год?")
     async def new_year(self, ctx):
         await ctx.send(embed=disnake.Embed(title="С наступающим новым годом!🎉",description="Новый год уже <t:1672520400:R>",color=0x4500ff))
@@ -1101,6 +1140,12 @@ class BotSettings(commands.Cog):
         await ctx.response.defer()
         channel = канал
         try:
+            message = await channel.send("https://tenor.com/view/harry-potter-funny-harrypotter-voldemort-gif-19286790")
+        except:
+            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Кажеться, я не могу отправлять сообщения в этот канал",color=disnake.Color.red()))
+        else:
+            await message.delete()
+        try:
             Memory.write(f"channels/{ctx.guild.id}welcomechannel.txt", channel.id)
         except:
             return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Не удалось записать канал в память\nОбратитесь на наш сервер за помощью.", color=disnake.Color.red()))
@@ -1111,6 +1156,12 @@ class BotSettings(commands.Cog):
     async def bye_channel(self, ctx, канал: disnake.TextChannel):
         await ctx.response.defer()
         channel = канал
+        try:
+            message = await channel.send("https://tenor.com/view/harry-potter-funny-harrypotter-voldemort-gif-19286790")
+        except:
+            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="Кажеться, я не могу отправлять сообщения в этот канал",color=disnake.Color.red()))
+        else:
+            await message.delete()
         try:
             Memory.write(f"channels/{ctx.guild.id}byechannel.txt", channel.id)
         except:
@@ -1279,6 +1330,9 @@ class Economy(commands.Cog):
         summ = сумма
         with sqlite3.connect("database.db") as db:
             cursor = db.cursor()
+            for guild, user, balance in cursor.execute("SELECT * FROM balances WHERE user_id = ? AND guild_id = ?",(ctx.author.id, ctx.guild.id)):
+                if int(balance) < int(summ):
+                    return await ctx.send(embed=disnake.Embed(title="Ошибка",description="У вас мало денег нет счету"))
             cursor.execute("UPDATE balances SET user_balance = user_balance - ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id))
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, member.id))
         await ctx.send(embed=disnake.Embed(title="<:correctCheckmark:1047244074350018700> Успешно",description=f"Вы перевели свои **{summ}** <:dollar:1051974269296451684> пользователю {member.mention}!",color=0x228b22))
@@ -1321,15 +1375,20 @@ class Relationships(commands.Cog):
 
     @commands.slash_command(name="hug",description="Обнимашки с другим человеком")
     async def hug(self, ctx, участник: disnake.Member = commands.Param(description="Кого хотите обнять?")):
+        if ctx.author.id == участник.id:
+            return await ctx.send("Ты не можешь обнять сам себя.",ephemeral=True)
         request = requests.get("https://some-random-api.ml/animu/hug")
         json_load = json.loads(request.text)
         await ctx.send(embed=disnake.Embed(title=f"**{ctx.author.name}** обнял **{участник.name}**",color=0x228b22).set_image(url=json_load["link"]))
 
     @commands.slash_command(name="pat",description="Погладить другого человека")
     async def pat(self, ctx, участник: disnake.Member = commands.Param(description="Кого хотите погладить? <:Magic:1047241900370956298>")):
+        if ctx.author.id == участник.id:
+            return await ctx.send("Ты не можешь погладить сам себя.",ephemeral=True)
         request = requests.get("https://some-random-api.ml/animu/pat")
         json_load = json.loads(request.text)
         await ctx.send(embed=disnake.Embed(title=f"**{ctx.author.name}** гладит **{участник.name}**",color=0x228b22).set_image(url = json_load["link"]))
+
 
 
 class RolePlayHelps(commands.Cog):
@@ -1524,7 +1583,7 @@ async def infouser(ctx, member: disnake.User):
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"/help [{len(bot.guilds)}]"))
+    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"С новым годом! [{len(bot.guilds)}]"))
     with sqlite3.connect("database.db") as db:
         cursor = db.cursor()
 
@@ -1554,11 +1613,11 @@ async def on_guild_join(guild):
     for member in guild.members:
         if member.id == 1047108944721616916:
             await chann.send(f"Привет, мой хозяин <@1047108944721616916> ! 😊")
-    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"/help [{len(bot.guilds)}]"))
+    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"С новым годом! [{len(bot.guilds)}]"))
 
 @bot.event
 async def on_guild_remove(guild):
-    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"/help [{len(bot.guilds)}]"))
+    await bot.change_presence(status=disnake.Status.dnd, activity=disnake.Activity(type=disnake.ActivityType.streaming, url="https://www.twitch.tv/tjma_",name=f"С новым годом! [{len(bot.guilds)}]"))
 
 @bot.event
 async def on_slash_command_error(ctx, error):
@@ -1618,7 +1677,7 @@ async def on_message(msg):
     await bot.process_commands(msg)
     content = msg.content.lower()
     for_check = content.translate(str.maketrans('', '', string.punctuation))
-    bad_words = ["сука","ёбаный","блять","пидор","пидора","бля","ебать","нахуй","хуй","заебал","заебись","ахуенно","ахуено","пиздюк","нахуя","хуйня","ёбаный","ебаный","лошара","лох","пиздец","пздц","пизда","педик","канаве","мудила","мудак","конченный","конченый","кончаю","конча","шлюха","гей","лесби","лесбиянка","трах","трахаться","сосаться","ебаться","доёбываться"]
+    bad_words = ["сука","ёбаный","блять","пидор","пидора","бля","ебать","нахуй","хуй","заебал","заебись","ахуенно","ахуено","пиздюк","нахуя","хуйня","ёбаный","ебаный","лошара","лох","пиздец","пздц","пизда","педик","канаве","мудила","мудак","конченный","конченый","кончаю","конча","шлюха","гей","лесби","лесбиянка","трах","трахаться","сосаться","ебаться","доёбываться","залупа","хуя","блядина","гавнозалупа","пенис","рукожоп","хуярище","боданище","ебланище"]
     words_content = for_check.split()
     try:
         Memory.read(f"badwords/{msg.guild.id}.txt")
@@ -1661,4 +1720,4 @@ async def on_message(msg):
                     await msg.reply("Слишком много HTTPS запросов на данный момент, простите...")
 
 
-bot.run("BotToken")
+bot.run("Discord Token Here")
