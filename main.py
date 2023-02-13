@@ -36,9 +36,8 @@ from threading import Thread
 from bs4 import BeautifulSoup as BS
 from fake_useragent import UserAgent
 client = None
-request = Request(proxy_url='Ссылка на прокси')
-client = Client("Токен яндекс музыки", request=request).init()
-print("yandex_music: Success Connect")
+request = Request(proxy_url='Прокси')
+client = Client("Аккаунт яндекс музыки с Яндекс.Плюс", request=request).init()
 translator = googletrans.Translator()
 bot = commands.Bot(command_prefix="?!", intents=disnake.Intents.all(), sync_commands_debug=True)
 
@@ -95,6 +94,9 @@ class Song(disnake.PCMVolumeTransformer):
         if not voice: return "notChannel"
         if voice:
             await voice.channel.connect()
+            for mem in voice.channel.members:
+                if mem.id == 1047125592220373075:
+                    await mem.edit(deafen=True)
             return None
 
     async def leave_channel(ctx):
@@ -1408,18 +1410,18 @@ class Economy(commands.Cog):
         try:
             summ = Memory.read(f"daily/{ctx.guild.id}summ-of-daily.txt")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Разработчики не указывали сумму ни разу, и да бы не создать им проблем, я вам откажу."),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description=lang(ctx, "Разработчики не указывали сумму ни разу, и да бы не создать им проблем, я вам откажу."),color=disnake.Color.red()))
         try:
             work_price = Memory.read(f"works/{ctx.guild.id}.txt")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "На этом сервере отключена экономика")))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="На этом сервере отключена экономика"))
         summ = int(summ)
         if summ == 0:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Ежедневная награда на этом сервере отсутствует"),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Ежедневная награда на этом сервере отсутствует",color=disnake.Color.red()))
         with sqlite3.connect("database.db") as db:
             cursor = db.cursor()
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Вы получили свой ежедневный бонус, следующий бонус вы получите через 72000 секунд(20ч)!"),color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Вы получили свой ежедневный бонус, следующий бонус вы получите через 72000 секунд(20ч)!",color=0x228b22))
 
     @commands.slash_command(name="add-money", description="Добавить деньги на счёт какого либо пользователя")
     @commands.has_permissions(moderate_members = True)
@@ -1434,9 +1436,9 @@ class Economy(commands.Cog):
                     if user == участник.id:
                         summ = suma
 
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"{lang(ctx, f'Теперь у участника {summ}')}<:dollar:1051974269296451684>!",color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь у участника {summ} <:dollar:1051974269296451684>!",color=0x228b22))
 
-    @commands.slash_command(name="reduce-money", description="Убавить деньги со счёта какого либо пользователя либо всего сервера.")
+    @commands.slash_command(name="reduce-money", description="Убавить деньги со счёта какого либо пользователя")
     @commands.has_permissions(moderate_members = True)
     async def reduce_money(self, ctx, сумма: int = commands.Param(description="Какую сумму хотите забрать?"), участник: disnake.Member = commands.Param(description="Укажите у какого участника, не указывайте если у всего сервера")):
         await ctx.response.defer()
@@ -1462,7 +1464,7 @@ class Economy(commands.Cog):
                     return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="У вас мало денег на счету",color=disnake.Color.red()))
             cursor.execute("UPDATE balances SET user_balance = user_balance - ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id,))
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, member.id,))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Вы перевели свои **{summ}** <:dollar:1051974269296451684> пользователю {member.mention}!",color=0x228b22))
+        await ctx.send("<:correctCheckmark:1047244074350018700>")
 
     @commands.slash_command(name="ping",description="Проверка на работоспособность бота.")
     async def ping(self, ctx):
@@ -1552,7 +1554,7 @@ class RolePlayHelps(commands.Cog):
         except disnake.errors.HTTPException:
             await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."))
         else:
-            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Теперь используя никнейм персонажа, вы можете отправлять сообщения от его имени в этом канале!",color=0x228b22))
+            await ctx.send("<:correctCheckmark:1047244074350018700>")
 
     @commands.slash_command(name="acc-send",description="Отправить что то от имени персонажа")
     @commands.bot_has_permissions(manage_webhooks = True)
@@ -1605,7 +1607,7 @@ class RolePlayHelps(commands.Cog):
                         status = False
                         return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Вы не приложили никаких изображений, введите команду и отправьте мне сообщение с вложением",color=disnake.Color.red()))
         Memory.write(f"avatars/{ctx.channel.id}{имя}webhook.txt", url)
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Аватар я запомнил, пора придумывать рп!").add_field(name=lang(ctx, "Ссылка"),value=f"[**Клик**]({Memory.read(f'avatars/{ctx.channel.id}{имя}webhook.txt')})"))
+        await ctx.send("<:correctCheckmark:1047244074350018700>")
 
     @commands.slash_command(name="acc-remove",description="Удалить персонажа")
     @commands.has_permissions(manage_webhooks = True)
@@ -1627,7 +1629,7 @@ class RolePlayHelps(commands.Cog):
         except disnake.errors.HTTPException:
             await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."))
         else:
-            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Этого персонажа больше нет в этом канале!"))
+            await ctx.send("<:correctCheckmark:1047244074350018700>")
 
 
     @commands.slash_command(name="acc-all",description="Посмотреть всех существующих персонажей в канале")
@@ -1905,19 +1907,19 @@ async def on_message(msg):
     #return await msg.reply(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Неизвестная ошибка",description="Обратитесь к администраций",color=disnake.Color.red()))
     await bot.process_commands(msg)
     if msg.guild.id == 1020041665047703622 or msg.guild.id == 1069253886533185576:
-        r = random.choice([0,0,1])
-        if r == 1:
-            with sqlite3.connect("database.db") as db:
+        r = random.choice([0,0,1]) # Подбираем стоит ли нам сохранять предложение
+        if r == 1: # Если да
+            with sqlite3.connect("database.db") as db: # Сохраняем предложение в дб
                 c = db.cursor()
                 c.execute("INSERT INTO sugestions(guild_id, sugestion) VALUES(?, ?)", (msg.guild.id, msg.content,))
-            await msg.add_reaction(random.choice(["<:game:1047241643193016413>", "<:pandaElf:1047241340657872948>","<:shockedThinsk4:1047243843541680229>","<:steve:1047241588654473247>","<:very_angry_ping:1047241058037289093>","<:thinks2:1047243739468410900>","<:thinks1:1047243641388793938>"]))
-        if bot.user.mentioned_in(msg):
-            ss = []
-            with sqlite3.connect("database.db") as db:
+            await msg.add_reaction(random.choice(["<:game:1047241643193016413>", "<:pandaElf:1047241340657872948>","<:shockedThinsk4:1047243843541680229>","<:steve:1047241588654473247>","<:very_angry_ping:1047241058037289093>","<:thinks2:1047243739468410900>","<:thinks1:1047243641388793938>"])) # Ставим реакцию
+        if bot.user.mentioned_in(msg): #если бот упомянут
+            ss = [] #список сохранёных предложений
+            with sqlite3.connect("database.db") as db: #Заполняем список
                 c = db.cursor()
                 for g, su in c.execute("SELECT * FROM sugestions WHERE guild_id = ?", (msg.guild.id,)):
                     ss.append(su)
-            await msg.reply(random.choice(ss))
+            await msg.reply(random.choice(ss)) # отвечаем рандомным сообщением из списка
 
 
     content = msg.content.lower()
