@@ -9,6 +9,7 @@ import json
 import datetime
 import calendar
 import time
+import chat
 import sqlite3
 from fuzzywuzzy import fuzz
 from memory import Memory
@@ -36,11 +37,11 @@ from threading import Thread
 from bs4 import BeautifulSoup as BS
 from fake_useragent import UserAgent
 client = None
-request = Request(proxy_url='прокси')
-client = Client("аккаунт яндекса с Яндекс.Плюс", request=request).init()
+request = Request(proxy_url='http://логин:пароль@195.245.103.194:62986')
+client = Client("токен яндекс музыки", request=request).init()
 print("yandex_music: Success Connect")
 translator = googletrans.Translator()
-bot = commands.Bot(command_prefix="?!", intents=disnake.Intents.all(), sync_commands_debug=True)
+bot = commands.Bot(command_prefix="?", intents=disnake.Intents.all(), sync_commands_debug=True)
 
 def lang(ctx, text):
     return text
@@ -55,7 +56,10 @@ class VoiceStateError(Exception):
 
 class Song(disnake.PCMVolumeTransformer):
 
-    def search_tracks(ctx, query):
+    def __init__(self):
+        self._source = "Yandex Music"
+
+    def search_tracks(self, ctx, query):
         stats = True
         while stats:
             try:
@@ -79,7 +83,7 @@ class Song(disnake.PCMVolumeTransformer):
                 }
             except NetworkError:
                 pass
-    async def download_track(ctx, track):
+    async def download_track(self, ctx, track):
         stats = True
         while stats:
             try:
@@ -89,17 +93,20 @@ class Song(disnake.PCMVolumeTransformer):
                 pass
 
 
-    async def join_channel(ctx):
+    async def join_channel(self, ctx):
         voice = ctx.author.voice
         if not voice: return "notChannel"
         if voice:
             await voice.channel.connect()
             for mem in voice.channel.members:
                 if mem.id == 1047125592220373075:
-                    await mem.edit(deafen=True)
+                    try:
+                        await mem.edit(deafen=True)
+                    except:
+                        pass
             return None
 
-    async def leave_channel(ctx):
+    async def leave_channel(self, ctx):
         voice_state = ctx.guild.voice_client
         if not voice_state:
             return "notState"
@@ -109,17 +116,17 @@ class Song(disnake.PCMVolumeTransformer):
         else:
             return "notState"
 
-    async def stop(ctx):
+    async def stop(self, ctx):
         voice_state = ctx.guild.voice_client
         if not voice_state:
             return "notState"
         if voice_state.is_connected():
-            await Song.leave_channel(ctx)
+            await Song.leave_channel(self, ctx)
             return None
         else:
             return "notState"
 
-    async def my_after(ctx):
+    async def my_after(self, ctx):
         #os.remove(f"songs/{ctx.guild.id}.mp3")
         if not ctx.guild:
             return
@@ -149,21 +156,24 @@ class Song(disnake.PCMVolumeTransformer):
             c.execute("DELETE FROM songs WHERE guild = ? AND position = ?", (guilds[0], positions[0],))
         if os.path.isfile("songs/{}.mp3".format(ids[0])):
             os.remove("songs/{}.mp3".format(ids[0]))
+        if os.path.isfile(f"msgs/{ctx.guild.id}.txt"):
+            with open(f"msgs/{ctx.guild.id}.txt", "r") as file:
+                await bot.get_message(int(file.read())).delete()
         if voice_state and voice_state.is_connected():
             try:
                 positions[1]
             except:
                 pass
             else:
-                await Song.play(ctx)
+                await Song.play(self, ctx)
 
-    def init_after(ctx):
-        asyncio.run_coroutine_threadsafe(Song.my_after(ctx), bot.loop)
+    def init_after(self, ctx):
+        asyncio.run_coroutine_threadsafe(Song.my_after(self, ctx), bot.loop)
 
-    async def play(ctx):
+    async def play(self, ctx):
         voice_state = ctx.guild.voice_client
         if not voice_state:
-            error = await Song.join_channel(ctx)
+            error = await Song.join_channel(self, ctx)
             if error:
                 return error
         voice_state = ctx.guild.voice_client
@@ -187,10 +197,10 @@ class Song(disnake.PCMVolumeTransformer):
                 positions.append(p)
                 imgs.append(im)
         if not os.path.isfile(f"songs/{ids[0]}.mp3"):
-            await Song.download_track(ctx, {'id': ids[0]})
-        voice_state.play(disnake.FFmpegPCMAudio(f"songs/{ids[0]}.mp3"), after=lambda e: Song.init_after(ctx))
+            await Song.download_track(self, ctx, {'id': ids[0]})
+        voice_state.play(disnake.FFmpegPCMAudio(f"songs/{ids[0]}.mp3"), after=lambda e: Song.init_after(self, ctx))
         voice_state.is_playing()
-        infor = Song.now_playing(ctx.guild)
+        infor = Song.now_playing(self, ctx.guild)
         embed = disnake.Embed(title=infor['name'],color=0x228b22)
         embed.add_field(name=lang(ctx,"Главный автор:"),value=infor['artist'])
         embed.add_field(name=lang(ctx,"Предложил:"),value=f"<@{infor['requester']}>")
@@ -200,16 +210,19 @@ class Song(disnake.PCMVolumeTransformer):
         embed.set_thumbnail(url=infor['image'])
 
         comps = [
-        disnake.ui.Button(emoji="⏹", style=disnake.ButtonStyle.danger, custom_id="stop"),
-        disnake.ui.Button(emoji="⏮", style=disnake.ButtonStyle.blurple, custom_id="replay"),
-        disnake.ui.Button(emoji="⏸", style=disnake.ButtonStyle.blurple, custom_id="pause"),
-        disnake.ui.Button(emoji="⏭", style=disnake.ButtonStyle.blurple, custom_id="next")
+        disnake.ui.Button(emoji="⏹", label="Стоп", style=disnake.ButtonStyle.danger, custom_id="stop"),
+        disnake.ui.Button(emoji="⏮", label="Реплей", style=disnake.ButtonStyle.blurple, custom_id="replay"),
+        disnake.ui.Button(emoji="⏸", label="Пауза", style=disnake.ButtonStyle.blurple, custom_id="pause"),
+        disnake.ui.Button(emoji="⏭", label="Скип", style=disnake.ButtonStyle.blurple, custom_id="next"),
+        disnake.ui.Button(emoji="📰", label="Текст", style=disnake.ButtonStyle.success, custom_id="text")
         ]
 
-        await ctx.channel.send(embed=embed, components=comps)
+        msg = await ctx.channel.send(embed=embed, components=comps)
+        with open(f"msgs/{msg.guild.id}.txt", "w") as file:
+            file.write(str(msg.id))
         return None
 
-    async def add_for_id(ctx, i):
+    async def add_for_id(self, ctx, i):
         track_object = client.tracks([f"{i}"])[0]
         text = None
         lyrics = track_object.get_supplement()
@@ -219,7 +232,7 @@ class Song(disnake.PCMVolumeTransformer):
             cursor.execute("INSERT INTO songs(name, requester, author, id, albumid, lyrics, guild, image) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", (track_object['title'],ctx.author.id,track_object['artists'][0]['name'],track_object['id'],track_object['albums'][0]["id"],text,ctx.guild.id,"https://" + track_object["og_image"].replace("%%", "1000x1000"),))
 
 
-    async def skip(ctx):
+    async def skip(self, ctx):
         voice_state = ctx.guild.voice_client
         if voice_state and voice_state.is_playing():
             try:
@@ -230,7 +243,7 @@ class Song(disnake.PCMVolumeTransformer):
         else:
             return "notState"
 
-    def lyrics(ctx):
+    def lyrics(self, ctx):
         names = []
         requesters = []
         artists = []
@@ -255,7 +268,7 @@ class Song(disnake.PCMVolumeTransformer):
         "lyrics": lyrics[0]
         }
 
-    def now_playing(guild):
+    def now_playing(self, guild):
         names = []
         requesters = []
         artists = []
@@ -283,7 +296,7 @@ class Song(disnake.PCMVolumeTransformer):
         "id": ids[0]
         }
 
-    def construct_queue(guild):
+    def construct_queue(self, guild):
         urls = []
         names = []
         positions = []
@@ -294,11 +307,11 @@ class Song(disnake.PCMVolumeTransformer):
                 names.append(n)
                 positions.append(p)
                 urls.append(f"https:/music.yandex.ru/album/{ai}/track/{i}")
-                texts.append(f"`{p}.` [**{n}**](https:/music.yandex.ru/album/{ai}/track/{i})")
+                texts.append(f"`{p}.` {a} - [**{n}**](https:/music.yandex.ru/album/{ai}/track/{i}) - <@{r}>")
         if texts == []: return None
         return "\n".join(list(map(str, texts)))
 
-    def parse_queue(guild):
+    def parse_queue(self, guild):
         urls = []
         names = []
         positions = []
@@ -316,7 +329,7 @@ class Song(disnake.PCMVolumeTransformer):
         }
 
 
-    def pause(ctx):
+    def pause(self, ctx):
         voice_state = ctx.voice_client
         if voice_state.is_playing():
             voice_state.pause()
@@ -324,59 +337,74 @@ class Song(disnake.PCMVolumeTransformer):
         else:
             raise VoiceStateError("don't playing!")
 
-    def resume(ctx):
+    def resume(self, ctx):
         voice_state = ctx.voice_client
         if not voice_state.is_playing():
             voice_state.resume()
         else:
             raise VoiceStateError("already Playing!")
 
-    def like(ctx):
-        data = Song.now_playing(ctx.guild)
-        with sqlite3.connect("database.db") as db:
-            c = db.cursor()
-            c.execute("INSERT INTO userlikes VALUES(?,?,?)",(ctx.author.id,data["name"],data["id"],))
 
-    def user_likes(ctx):
-        likes = {
-        "title": [],
-        "id": []
-        }
-        with sqlite3.connect("database.db") as db:
-            c = db.cursor()
-            for user, title, i in c.execute("SELECT * FROM userlikes"):
-                if user == ctx.author.id:
-                    likes["title"].append(title)
-                    likes["id"].append(i)
-        if likes["title"] == [] and likes["id"] == []:
-            return None
-        else:
-            return likes
-
-    def get_rand_track(ctx):
+    def get_rand_track(self, ctx):
         track = random.choice(client.users_likes_tracks()).fetch_track()
         return track
+
+    async def replay(self, ctx):
+        if os.path.isfile(f"msgs/{ctx.guild.id}.txt"):
+            with open(f"msgs/{ctx.guild.id}.txt", "r") as file:
+                await bot.get_message(int(file.read())).delete()
+        Song.pause(self, ctx.guild)
+        await Song.play(self, ctx)
+
+    async def import_album(self, ctx, album_id: int):
+        album = client.albums_with_tracks(album_id)
+        tracks = []
+        count = 0
+        for i, volume in enumerate(album.volumes):
+            tracks += volume
+        for track in tracks:
+            #print(track)
+            await Song.add_for_id(self, ctx, track["id"])
+            count += 1
+        return count
 
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.song = Song()
 
     @commands.slash_command(name="join",description="Подключает бота к вашему каналу")
     async def _join(self, ctx):
         await ctx.response.defer()
-        error = await Song.join_channel(ctx)
+        error = await self.song.join_channel(ctx)
         if error:
-            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Для этого необходимо войти в голосовой канал"),color=disnake.Color.red()))
+            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Для этого необходимо войти в голосовой канал"),color=disnake.Color.red()), delete_after = 10)
+
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",color=0x228b22))
+
+    @commands.command(name="join", usage="?join")
+    async def _join_(self, ctx):
+        error = await self.song.join_channel(ctx)
+        if error:
+            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Для этого необходимо войти в голосовой канал"),color=disnake.Color.red()), delete_after = 10)
 
         await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",color=0x228b22))
 
     @commands.slash_command(name="stop",description="Остановить воспроизведение(внимание, очередь будет сохранена.)")
     async def _stop(self, ctx):
         await ctx.response.defer()
-        error = await Song.stop(ctx)
+        error = await self.song.stop(ctx)
         if error:
-            if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Я уже не подключен."),color=disnake.Color.red()))
+            if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Я уже не подключен."),color=disnake.Color.red()), delete_after = 10)
+
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=lang(ctx,"Пока-пока!"),color=0x228b22))
+
+    @commands.command(name="stop", usage="?stop")
+    async def _stop_(self, ctx):
+        error = await self.song.stop(ctx)
+        if error:
+            if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Я уже не подключен."),color=disnake.Color.red()), delete_after = 10)
 
         await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=lang(ctx,"Пока-пока!"),color=0x228b22))
 
@@ -387,40 +415,86 @@ class Music(commands.Cog):
         voice_state = ctx.guild.voice_client
         if name:
             try:
-                track = Song.search_tracks(ctx, name)
+                track = self.song.search_tracks(ctx, name)
             except searchError:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Ничего не нашлось :("),color=disnake.Color.red()))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Ничего не нашлось :("),color=disnake.Color.red()), delete_after = 10)
         else:
-            text = Song.construct_queue(ctx.guild)
+            text = self.song.construct_queue(ctx.guild)
             if not text:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста, поэтому добавьте что то в неё!"),color=disnake.Color.red()))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста, поэтому добавьте что то в неё!"),color=disnake.Color.red()), delete_after = 10)
         if voice_state:
             if voice_state.is_playing():
                 pass
             else:
-                error = await Song.play(ctx)
+                error = await self.song.play(ctx)
         else:
-            error = await Song.play(ctx)
+            error = await self.song.play(ctx)
             if error:
-                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()))
+                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 10)
         if name:
             await ctx.send(f"{track['title']} {lang(ctx,'успешно добавлена в очередь')}!")
         else:
-            await ctx.send(f"**{self.bot.user.name}** {lang(ctx,'успешно начал воспроизведение очереди')}!")
+            await ctx.send(f"**{self.bot.user.name}** успешно начал воспроизведение очереди!")
 
+    @commands.command(name="play", usage="?play <название> - Добавить\n?play - Включить очередь")
+    async def _play_(self, ctx, *, name: str = None):
+        voice_state = ctx.guild.voice_client
+        if name:
+            try:
+                track = self.song.search_tracks(ctx, name)
+            except searchError:
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Ничего не нашлось :("),color=disnake.Color.red()), delete_after = 10)
+        else:
+            text = self.song.construct_queue(ctx.guild)
+            if not text:
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста, поэтому добавьте что то в неё!"),color=disnake.Color.red()), delete_after = 10)
+        if voice_state:
+            if voice_state.is_playing():
+                pass
+            else:
+                error = await self.song.play(ctx)
+        else:
+            error = await self.song.play(ctx)
+            if error:
+                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 10)
+        if name:
+            await ctx.send(f"{track['title']} {lang(ctx,'успешно добавлена в очередь')}!")
+        else:
+            await ctx.message.add_reaction("<:correctCheckmark:1047244074350018700>")
+
+    @commands.slash_command(name="import-playlist", description="Импортировать плэйлист по ID")
+    async def iq_(self, ctx, id: int):
+        await ctx.response.defer()
+        count = await self.song.import_album(ctx, id)
+        if not count > 0:
+            return await ctx.send("<:wrongCheckmark:1047244133078675607> Кажеться, в плейлисте ничего нет!")
+        else:
+            await ctx.send("<:correctCheckmark:1047244074350018700> Успешно, вы можете начать воспроизведение воспользовавшись командой `/play`")
 
     @commands.slash_command(name="skip",description="Пропустить трек")
     async def _skip(self, ctx):
         await ctx.response.defer()
-        error = await Song.skip(ctx)
-        if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет!"),color=disnake.Color.red()))
+        error = await self.song.skip(ctx)
+        if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет!"),color=disnake.Color.red()), delete_after = 10)
         await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",color=0x228b22))
+
+    @commands.command(name="skip", usage="?skip")
+    async def _skip_(self, ctx):
+        error = await self.song.skip(ctx)
+        if error == "notState": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет!"),color=disnake.Color.red()), delete_after = 10)
+        await ctx.message.add_reaction("<:correctCheckmark:1047244074350018700")
 
     @commands.slash_command(name="lyrics",description="Получить текст от играемого прямо сейчас трека")
     async def lyri(self, ctx):
         await ctx.response.defer()
-        lyrics = Song.lyrics(ctx)
-        if not lyrics['lyrics']: return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Текст этой песни не доступен"),color=disnake.Color.red()))
+        lyrics = self.song.lyrics(ctx)
+        if not lyrics['lyrics']: return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Текст этой песни не доступен"),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"🔍 {lang(ctx,'Текст от трека')} **{lyrics['name']}**",description=lyrics["lyrics"]))
+
+    @commands.command(name="lyrics", usage="?lyrics")
+    async def _lyri_(self, ctx):
+        lyrics = self.song.lyrics(ctx)
+        if not lyrics['lyrics']: return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Текст этой песни не доступен"),color=disnake.Color.red()), delete_after = 10)
         await ctx.send(embed=disnake.Embed(title=f"🔍 {lang(ctx,'Текст от трека')} **{lyrics['name']}**",description=lyrics["lyrics"]))
 
     @commands.slash_command(name="now-playing",description="Что сейчас играет?")
@@ -429,7 +503,7 @@ class Music(commands.Cog):
         voice_state = ctx.guild.voice_client
         if voice_state:
             if voice_state.is_playing():
-                infor = Song.now_playing(ctx.guild)
+                infor = self.song.now_playing(ctx.guild)
                 embed = disnake.Embed(title=infor['name'],color=0x228b22)
                 embed.add_field(name=lang(ctx,"Главный автор:"),value=infor['artist'])
                 embed.add_field(name=lang(ctx,"Предложил:"),value=f"<@{infor['requester']}>")
@@ -437,69 +511,135 @@ class Music(commands.Cog):
                 embed.add_field(name=lang(ctx,"Ссылка:"),value=f"[**{lang(ctx,'Это кликабельная ссылка!')}**]({infor['uri']})")
                 embed.add_field(name=lang(ctx,"Позиция:"),value=infor['pos'])
                 embed.set_thumbnail(url=infor['image'])
-                await ctx.send(embed=embed)
+                await ctx.send(embed=embed, delete_after = 20)
             else:
-                await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,'Сейчас ничего не играет'),color=disnake.Color.red()))
+                await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,'Сейчас ничего не играет'),color=disnake.Color.red()), delete_after = 10)
         else:
-            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red()))
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red()), delete_after = 10)
+
+    @commands.command(name="now-playing", aliases=["np","now"], usage="?now-playing")
+    async def _np_(self, ctx):
+        voice_state = ctx.guild.voice_client
+        if voice_state:
+            if voice_state.is_playing():
+                infor = self.song.now_playing(ctx.guild)
+                embed = disnake.Embed(title=infor['name'],color=0x228b22)
+                embed.add_field(name=lang(ctx,"Главный автор:"),value=infor['artist'])
+                embed.add_field(name=lang(ctx,"Предложил:"),value=f"<@{infor['requester']}>")
+                embed.add_field(name=lang(ctx,"Источник:"),value="<:yandexMusic:1056924402790436934> Yandex Music\n")
+                embed.add_field(name=lang(ctx,"Ссылка:"),value=f"[**{lang(ctx,'Это кликабельная ссылка!')}**]({infor['uri']})")
+                embed.add_field(name=lang(ctx,"Позиция:"),value=infor['pos'])
+                embed.set_thumbnail(url=infor['image'])
+                await ctx.send(embed=embed, delete_after = 20)
+            else:
+                await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,'Сейчас ничего не играет'),color=disnake.Color.red()), delete_after = 10)
+        else:
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка!')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red()), delete_after = 10)
 
     @commands.slash_command(name="queue", description="Посмотреть очередь")
     async def queu(self, ctx):
         await ctx.response.defer()
-        text = Song.construct_queue(ctx.guild)
+        text = self.song.construct_queue(ctx.guild)
         if not text:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста!"),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста!"),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"{lang(ctx,'Очередь сервера')} {ctx.guild.name}!",description=text, color=0x228b22))
+
+    @commands.command(name="queue", usage="?queue")
+    async def _queu_(self, ctx):
+        text = self.song.construct_queue(ctx.guild)
+        if not text:
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Очередь на этом сервере пуста!"),color=disnake.Color.red()), delete_after = 10)
         await ctx.send(embed=disnake.Embed(title=f"{lang(ctx,'Очередь сервера')} {ctx.guild.name}!",description=text, color=0x228b22))
 
     @commands.slash_command(name="pause",description="Поставить воспроизведение на паузу")
     async def paus_(self, ctx):
         await ctx.response.defer()
         try:
-            Song.pause(ctx.guild)
+            self.song.pause(ctx.guild)
         except VoiceStateError:
-            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red()))
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red()), delete_after = 10)
         else:
-            await ctx.send(f"<:correctCheckmark:1047244074350018700>, {lang(ctx,'чтобы продолжить воспроизведение введите /resume')}")
+            await ctx.send(f"<:correctCheckmark:1047244074350018700>, {lang(ctx,'чтобы продолжить воспроизведение введите /resume')}", delete_after = 20)
+
+    @commands.command(name="pause", usage="?pause")
+    async def _paus_(self, ctx):
+        try:
+            self.song.pause(ctx.guild)
+        except VoiceStateError:
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Сейчас ничего не играет"),color=disnake.Color.red(), delete_after = 10))
+        else:
+            await ctx.send(f"<:correctCheckmark:1047244074350018700>, {lang(ctx,'чтобы продолжить воспроизведение введите /resume')}", delete_after = 20)
 
     @commands.slash_command(name="resume",description="Продолжить воспроизведение")
     async def resu_(self, ctx):
-        await ctx.response.defer()
         try:
-            Song.resume(ctx.guild)
+            self.song.resume(ctx.guild)
         except VoiceStateError:
-            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Трек уже играет"),color=disnake.Color.red()))
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Трек уже играет"),color=disnake.Color.red()), delete_after = 10)
         else:
-            await ctx.send(f"<:correctCheckmark:1047244074350018700>")
+            await ctx.message.add_reaction(f"<:correctCheckmark:1047244074350018700>")
+
+    @commands.command(name="resume", usage="?resume")
+    async def _resu_(self, ctx):
+        try:
+            self.song.resume(ctx.guild)
+        except VoiceStateError:
+            await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Трек уже играет"),color=disnake.Color.red()), delete_after = 10)
+        else:
+            await ctx.message.add_reaction(f"<:correctCheckmark:1047244074350018700>")
 
     @commands.slash_command(name="replay",description="Воспроизвести трек с начала")
     async def re_(self, ctx):
         await ctx.response.defer()
         voice_state = ctx.guild.voice_client
         if voice_state and voice_state.is_playing():
-            Song.pause(ctx.guild)
-            await Song.play(ctx)
+            await self.song.replay(ctx)
             await ctx.send("<:correctCheckmark:1047244074350018700>")
         else:
-            await ctx.send("<:wrongCheckmark:1047244133078675607>" + lang(ctx, "Сейчас ничего не играет чтобы начать воспроизведение заново!"))
+            await ctx.send("<:wrongCheckmark:1047244133078675607>" + lang(ctx, "Сейчас ничего не играет чтобы начать воспроизведение заново!"), delete_after = 10)
+
+    @commands.command(name="replay", usage="?replay")
+    async def _re_(self, ctx):
+        voice_state = ctx.guild.voice_client
+        if voice_state and voice_state.is_playing():
+            await self.song.replay(ctx)
+            await ctx.message.add_reaction("<:correctCheckmark:1047244074350018700>")
+        else:
+            await ctx.send("<:wrongCheckmark:1047244133078675607>" + lang(ctx, "Сейчас ничего не играет чтобы начать воспроизведение заново!"), delete_after = 10)
 
     @commands.slash_command(name="random-track",description="Воспроизвести рандомный трек")
     async def ra_tra(self, ctx):
         await ctx.response.defer()
         voice_state = ctx.guild.voice_client
-        track = Song.get_rand_track(ctx)
-        await Song.add_for_id(ctx, track["id"])
+        track = self.song.get_rand_track(ctx)
+        await self.song.add_for_id(ctx, track["id"])
         if voice_state:
             if voice_state.is_playing():
                 #await Song.leave_channel(ctx)
                 pass
             else:
-                error = await Song.play(ctx)
-                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()))
+                error = await self.song.play(ctx)
+                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 20)
         else:
-            error = await Song.play(ctx)
-            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()))
+            error = await self.song.play(ctx)
+            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 20)
         await ctx.send(f"Рандомный трек успешно добавлен в очередь!")
 
+    @commands.command(name="random-track", aliases=["rtrack"], usage="?random-track")
+    async def _ra_tra_(self, ctx):
+        voice_state = ctx.guild.voice_client
+        track = self.song.get_rand_track(ctx)
+        await self.song.add_for_id(ctx, track["id"])
+        if voice_state:
+            if voice_state.is_playing():
+                pass
+            else:
+                error = await self.song.play(ctx)
+                if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 10)
+        else:
+            error = await self.song.play(ctx)
+            if error == "notChannel": return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Зайдите в голосовой канал."),color=disnake.Color.red()), delete_after = 10)
+        await ctx.message.add_reaction("<:correctCheckmark:1047244074350018700>")
 
 class Main(commands.Cog):
     def __init__(self, bot):
@@ -519,7 +659,7 @@ class Main(commands.Cog):
             disnake.ui.Button(label=lang(ctx,"РП"), style=disnake.ButtonStyle.danger, custom_id="roleplay"),
             disnake.ui.Button(label=lang(ctx,"Настройки"), style=disnake.ButtonStyle.success, custom_id="setts")
         ])
-        
+
         embedmus = disnake.Embed(title=f"<:yandexMusic:1056924402790436934> {lang(ctx, 'Яндекс.Музыка')}",description=f"`/play <{lang(ctx, 'название')}>` - {lang(ctx, 'Начать воспроизведение в голосовом канале')}\n`/skip` - {lang(ctx, 'Пропустить трек')}\n`/stop` - {lang(ctx, 'Остановить и выйти из голосового канала')}\n`/join` - {lang(ctx, 'Пригласить бота в голосовой канал')}\n`/queue` - {lang(ctx, 'Посмотреть очередь сервера')}\n`/now-playing` - {lang(ctx, 'что сейчас играет?')}\n`/pause` - {lang(ctx,'поставить воспроизведение на паузу')}\n`/resume` - {lang(ctx, 'продолжить воспроизведение')}\n`/replay` - {lang(ctx, 'начать воспроизведение трека с самого начала')}",color=0x228b22)
         embedgames = disnake.Embed(title=f"🎮 {lang(ctx, 'Игры')}", description=f"`/maths-plus` - {lang(ctx, 'Игра в математику с сложением')}\n`/maths-minus` - {lang(ctx, 'Игра в математику с вычитанием')}\n`/maths-multiply` - {lang(ctx, 'Игра в математику с умножением')}\n`/tape` - {lang(ctx, 'Игра в рулетку')}\n`/truth-or-dare` - {lang(ctx, 'Игра в правду или действие')}\n`/heads-or-tails` - {lang(ctx, 'Подбросить монетку')}\n`/door` - {lang(ctx, 'Игра Выбери правильную дверь.')}\n`/akinator` - {lang(ctx, 'Сыграть в акинатора')}", color=0x228b22)
         embedmod = disnake.Embed(title=f"<:cooldown:1047243027166539846> {lang(ctx, 'Модерация')}",description=f"`/ban [member] <reason>` - {lang(ctx, 'Забанить кого-то')}\n`/kick [member] <reason>` - {lang(ctx, 'Выгнать кого либо с сервера')}\n`/mute [member] <time>` - {lang(ctx, 'Заглушить кого то на сколько то минут')}\n`/warn [@member] <reason>` - {lang(ctx, 'Выдать предупреждение')}\n`/warns` - {lang(ctx, 'Посмотреть все предупреждения на этом сервере')}\n`/unwarn [{lang(ctx, 'номер_случая')}]` - {lang(ctx, 'Снять пред')}", color=0x228b22)
@@ -528,7 +668,7 @@ class Main(commands.Cog):
         embedrela = disnake.Embed(title=f"<:pandaElf:1047241340657872948> {lang(ctx, 'Отношения')}",description=f"`/hug [{lang(ctx, 'участник')}]` - {lang(ctx, 'Обнять кого либо.')}\n`/pat [{lang(ctx, 'участник')}]` - {lang(ctx, 'Погладить кого либо')}",color=0x228b22)
         embedrp = disnake.Embed(title=f"<:shockedThinsk4:1047243843541680229> {lang(ctx, 'Ролевая игра')}",description=f"`/acc-register [{lang(ctx, 'имя')}]` - {lang(ctx, 'Создать нового персонажа')}\n`/acc-update-avatar [{lang(ctx, 'имя')}]` - {lang(ctx, 'Обновить аватар персонажу')}\n`/acc-all` - {lang(ctx, 'Посмотреть весь список персонажей')}\n`/acc-send [{lang(ctx, 'имя')}] [{lang(ctx, 'сообщения')}]` - {lang(ctx, 'Отправить сообщение от имени персонажа')}",color=0x228b22)
         embedsetts = disnake.Embed(title=f"⚙ {lang(ctx, 'Настройки')}",description=f"`/set-welcome-channel [{lang(ctx, 'канал')}]` - {lang(ctx, 'Устанавливает канал для уведомления о новых участниках')}\n`/set-bye-channel [{lang(ctx, 'канал')}]` - {lang(ctx, 'Установить канал для уведомления об ушедших участниках')}\n`/set-daily [{lang(ctx, 'сумма')}] - {lang(ctx, 'Установить сумму ежедневного приза, 0 если отключить')}`\n`/set-anti-badwords` - {lang(ctx, 'Включить запрет плохих слов')}\n`/set-work-price [{lang(ctx, 'сумма')}]` - {lang(ctx, 'Установить сумму которая будет выдаваться участника за работу')}\n`/set-lang [{lang(ctx, 'язык')}]` - {lang(ctx, 'Установить новый язык')}`\n`/disable-set [{lang(ctx, 'настройка')}]` - {lang(ctx, 'Отключить какую то настройку, настройка выбирается выпадающим списком')}\n`/ping` - {lang(ctx, 'Проверить работоспособность бота')}",color=0x228b22)
-    
+
         status = True
         def check(msg):
             return msg.guild.id == ctx.guild.id and msg.author.id == ctx.author.id
@@ -580,13 +720,37 @@ class Games(commands.Cog):
                         user_repl = int(user_repl)
                     except ValueError:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()))
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10)
                     if user_repl == reply:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю!"),color=disnake.Color.green()))
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю!"),color=disnake.Color.green()), delete_after = 20)
                     else:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()))
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10)
+
+    @commands.command(name="maths-minus", usage="?maths-minus")
+    async def _mathsminus_(self, ctx):
+        first = random.randint(1, 20000)
+        second = random.randint(1, 1500)
+        reply = first - second
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"Игра в математику"),description=lang(ctx,f"Сколько будет {first} - {second}?")))
+        status = True
+        while status:
+            wait = await bot.wait_for("message")
+            if wait.guild.id == ctx.guild.id:
+                if wait.author.id == ctx.author.id:
+                    user_repl = wait.content.lower()
+                    try:
+                        user_repl = int(user_repl)
+                    except ValueError:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10)
+                    if user_repl == reply:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю!"),color=disnake.Color.green()), delete_after = 20)
+                    else:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10)
 
     @commands.slash_command(name="maths-plus",description="Игра в математику с сложением")
     async def mathsplus(self, ctx):
@@ -595,23 +759,47 @@ class Games(commands.Cog):
         second = random.randint(1, 1500)
         reply = first + second
         await ctx.send(embed=disnake.Embed(title=lang(ctx,"Игра в математику"),description=lang(ctx,f"Сколько будет {first} + {second}?"))) #Отправляем пример
-        status = True 
-        while status: 
-            wait = await bot.wait_for("message") 
-            if wait.guild.id == ctx.guild.id: 
-                if wait.author.id == ctx.author.id: 
-                    user_repl = wait.content.lower() 
-                    try: 
-                        user_repl = int(user_repl) 
-                    except ValueError: 
-                        status = False 
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red())) # Говорим о том что мы ответили НЕ числом
-                    if user_repl == reply: 
-                        status = False 
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю. Оценка 5."),color=disnake.Color.green())) # Поздравляем с верным ответом
-                    else: 
-                        status = False 
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red())) # Говорим об неверном ответе, и говорим верный ответ
+        status = True
+        while status:
+            wait = await bot.wait_for("message")
+            if wait.guild.id == ctx.guild.id:
+                if wait.author.id == ctx.author.id:
+                    user_repl = wait.content.lower()
+                    try:
+                        user_repl = int(user_repl)
+                    except ValueError:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10) # Говорим о том что мы ответили НЕ числом
+                    if user_repl == reply:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю. Оценка 5."),color=disnake.Color.green()), delete_after = 20) # Поздравляем с верным ответом
+                    else:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10) # Говорим об неверном ответе, и говорим верный ответ
+
+    @commands.command(name="maths-plus", usage="?maths-plus")
+    async def _mathsplus_(self, ctx):
+        first = random.randint(1, 1500)
+        second = random.randint(1, 1500)
+        reply = first + second
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"Игра в математику"),description=lang(ctx,f"Сколько будет {first} + {second}?"))) #Отправляем пример
+        status = True
+        while status:
+            wait = await bot.wait_for("message")
+            if wait.guild.id == ctx.guild.id:
+                if wait.author.id == ctx.author.id:
+                    user_repl = wait.content.lower()
+                    try:
+                        user_repl = int(user_repl)
+                    except ValueError:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10) # Говорим о том что мы ответили НЕ числом
+                    if user_repl == reply:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю. Оценка 5."),color=disnake.Color.green()), delete_after = 20) # Поздравляем с верным ответом
+                    else:
+                        status = False
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10) # Говорим об неверном ответе, и говорим верный ответ
 
     @commands.slash_command(name="maths-multiply",description="Игра в математику с умножением")
     async def mathsmultiply(self, ctx):
@@ -630,48 +818,48 @@ class Games(commands.Cog):
                         user_repl = int(user_repl)
                     except ValueError:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()))
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не числом, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()), delete_after = 10)
                     if user_repl == reply:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю. Оценка 5."),color=disnake.Color.green()))
+                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Твой ответ верный!"),description=lang(ctx,"Поздравляю. Оценка 5."),color=disnake.Color.green()), delete_after = 20)
                     else:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Ты ответил не верно, поэтому оценка 2!"),description=lang(ctx,f"Правильным ответом было {reply}"),color=disnake.Color.red()))
+                        return await ctx.send(embed=disnake.Embed(title="Ты ответил не верно..."),description=f"Правильным ответом было {reply}",color=disnake.Color.red(), delete_after = 10)
 
 
     @commands.slash_command(name="tape", description="Крутануть рулетку на случайное кол-во баллов")
     @commands.cooldown(1, 60, commands.BucketType.user) # Ставим кулдаун
     async def tape(self, ctx):
-        await ctx.response.defer() 
-        mynum = random.randint(20, 3000) 
-        type_of_num = "Error" 
+        await ctx.response.defer()
+        mynum = random.randint(20, 3000)
+        type_of_num = "Error"
         type_color = 0xffffff
-        if mynum == 20: 
-            type_of_num = lang(ctx,"минимальное") 
-            type_color = 0xffffff 
+        if mynum == 20:
+            type_of_num = "минимальное"
+            type_color = 0xffffff
         if mynum > 20:
-            type_of_num = lang(ctx,"редкое") 
+            type_of_num = "редкое"
             type_color = 0x0084ff
         if mynum > 100:
-            type_of_num = lang(ctx,"эпическое")
+            type_of_num = "эпическое"
             type_color = 0x6f00ff
         if mynum > 1000:
-            type_of_num = lang(ctx,"мифическое")
+            type_of_num = "мифическое"
             type_color = 0xff0000
         if mynum > 2500:
-            type_of_num = lang(ctx,"ЛЕГЕНДАРНОЕ")
+            type_of_num = "ЛЕГЕНДАРНОЕ"
             type_color = 0xffee00
         embedfortune = disnake.Embed(color=0x228b22).set_image(url="https://media.tenor.com/fJ10v8TLEi0AAAAC/wheel-of-fortune.gif")
-        await ctx.send(embed=embedfortune)
+        await ctx.send(embed=embedfortune, delete_after = 23)
         await asyncio.sleep(3)
         img = Image.new('RGBA', (400, 150), '#232529')
         idraw = ImageDraw.Draw(img)
         headline = ImageFont.truetype('comfortaa.ttf', size = 25)
         undertext = ImageFont.truetype('comfortaa.ttf', size = 15)
-        idraw.text((10,15), lang(ctx,f"Вы выиграли {mynum} очков!"), font=headline)
-        idraw.text((105, 40), lang(ctx,f"Это {type_of_num} число!"), font=undertext)
-        idraw.text((105, 65), f"{lang(ctx,'Выйгравший')} - {ctx.author.name}", font=undertext)
-        idraw.text((10, 135), lang(ctx,f'Vex Draw\'s'), font=undertext)
+        idraw.text((10,15), f"Вы выиграли {mynum} очков!", font=headline)
+        idraw.text((105, 40), f"Это {type_of_num} число!", font=undertext)
+        idraw.text((105, 65), f"Выйгравший - {ctx.author.name}", font=undertext)
+        idraw.text((10, 135), f'Vex Draw\'s', font=undertext)
         img.save("tape_result.png")
         embed = disnake.Embed(color=type_color).set_image(file=disnake.File("tape_result.png"))
         await ctx.edit_original_response(embed=embed)
@@ -688,51 +876,51 @@ class Games(commands.Cog):
         truth = ["Тебя привлекают парни, или девушки?","Кого ты любишь? Назови его/её имя.","Какие языки ты знаешь? 🌎","Какое твоё хобби?","Ты выпивал когда нибудь?","Ты ходишь на какие нибудь доп. занятия?","Какой твой любимый напиток?","Какая твоя любимая пища?","Ты знаешь что то взрослое? Расскажи. (Пожалуйста, введите комнаду второй раз, если играете с детьми.)","Какой была твоя самая неловкая ситуация? Расскажи о ней.","В каком ты классе?(Или же кем работаешь)","Ты знаешь что нибудь из програмирования? Поделись этим если да.","Чтобы ты выбрал - Adidas или Nike?(не реклама)","Кем ты планируешь работать в будущем?(Если уже не работаешь)","Сколько сейчас у тебя на балансе денег? <:dollar:1051974269296451684>"]
         dare = ["Скажи тому, кого любишь о том, что ты любишь его. 💜","Найди веник, а лучше метлу, и изобрази ведьму, летающую на метле с серьёзным лицом.","Изобрази своё любимое животное","Повтори свой любимый мем.","Скажи что то на английском","Прямо сейчас без обсуждения на весь дом крикни \"ГОЛУБКИ Я ДОМА\"","Сделай ужасное селфи и поставь его себе на аватар на 3 дня.","Сними свои носки ртом(Зубами)","Поговори с подушкой 5 минут, как будто ты её любишь.","Издавай неприятные и громкие звуки в течении всего дня, когда ешь или пьёшь.","Разговаривай со всеми не закрывая рот.","Поспорь со стенкой","Подерись со стенкой","Проверь, сколько виноградин у тебя поместиться во рту.","Выйди на улицу, и прокричи \"О НЕТ! МЕНЯ УСЫНОВИЛИ(УДОЧЕРИЛИ)\""]
         await ctx.response.defer()
-        questo = disnake.Embed(title=lang(ctx,"Что выбирает игрок, играющий в игру? 🎁"),color=0x228b22)
+        questo = disnake.Embed(title="Что выбирает игрок, играющий в игру? 🎁",color=0x228b22)
         await ctx.send(embed=questo,components=[
-            disnake.ui.Button(label=lang(ctx,"Правда"), style=disnake.ButtonStyle.success, custom_id="truth"),
-            disnake.ui.Button(label=lang(ctx,"Действие"), style=disnake.ButtonStyle.danger, custom_id="dare"),
+            disnake.ui.Button(label="Правда", style=disnake.ButtonStyle.success, custom_id="truth"),
+            disnake.ui.Button(label="Действие", style=disnake.ButtonStyle.danger, custom_id="dare"),
         ])
 
         @self.bot.listen("on_button_click")
         async def game_listener(ctx: disnake.MessageInteraction):
             if ctx.component.custom_id == "truth":
-                await ctx.send(embed=disnake.Embed(description=f"{ctx.author.mention} {lang(ctx,random.choice(truth))}",color=0x228b22))
+                await ctx.send(embed=disnake.Embed(description=f"{ctx.author.mention} {random.choice(truth)}",color=0x228b22), delete_after = 10)
             if ctx.component.custom_id == "dare":
-                await ctx.send(embed=disnake.Embed(description=f"{ctx.author.mention} {lang(ctx,random.choice(dare))}",color=0x228b22))
+                await ctx.send(embed=disnake.Embed(description=f"{ctx.author.mention} {random.choice(dare)}",color=0x228b22), delete_after = 10)
 
     @commands.slash_command(name="heads-or-tails",description="Народный способ решить что либо, орёл или решка?")
     async def heads_or_tail(self, ctx):
         await ctx.response.defer()
         wars = [0, 1]
         wars = random.choice(wars)
-        await ctx.send(embed=disnake.Embed(color=0x228b22).set_image(url="https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/coin-flip-20.gif?v=1669511113445"))
+        await ctx.send(embed=disnake.Embed(color=0x228b22).set_image(url="https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/coin-flip-20.gif?v=1669511113445"), delete_after = 23)
         await asyncio.sleep(3)
         if wars == 1:
-            return await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Это Орёл!"),color=0x228b22).set_image(url="https://w7.pngwing.com/pngs/73/614/png-transparent-double-headed-eagle-gold-coin-gold-gold-coin-gold-material.png"))
+            return await ctx.edit_original_response(embed=disnake.Embed(title="Это Орёл!",color=0x228b22).set_image(url="https://w7.pngwing.com/pngs/73/614/png-transparent-double-headed-eagle-gold-coin-gold-gold-coin-gold-material.png"))
         if wars == 0:
-            return await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Это Решка!"),color=0x228b22).set_image(url="https://newcoin.ru/wa-data/public/shop/products/59/08/859/images/3343/3343.970.JPG"))
+            return await ctx.edit_original_response(embed=disnake.Embed(title="Это Решка!",color=0x228b22).set_image(url="https://newcoin.ru/wa-data/public/shop/products/59/08/859/images/3343/3343.970.JPG"))
 
     @commands.slash_command(name="door",description="Игра - Выбери правильную дверь!")
     async def door(self, ctx):
         await ctx.response.defer()
         door = random.choice([1,2,3])
-        components = disnake.ui.Select(placeholder=lang(ctx,"Выбирайте..."), options=[
-            disnake.SelectOption(label="1🚪", value = "1", description=lang(ctx,"Выбрать первую дверь")),
-            disnake.SelectOption(label="2🚪", value = "2", description=lang(ctx,"Выбрать вторую дверь")),
-            disnake.SelectOption(label="3🚪", value = "3", description=lang(ctx,"Выбрать третью дверь"))
+        components = disnake.ui.Select(placeholder="Выбирайте...", options=[
+            disnake.SelectOption(label="1🚪", value = "1", description="Выбрать первую дверь"),
+            disnake.SelectOption(label="2🚪", value = "2", description="Выбрать вторую дверь"),
+            disnake.SelectOption(label="3🚪", value = "3", description="Выбрать третью дверь")
         ])
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"Выбери правильную дверь"),description=lang(ctx,"Правильная или нет, зависит от твоей удачи..."),color=0x228b22), components=components)
+        await ctx.send(embed=disnake.Embed(title="Выбери правильную дверь",description="Правильная или нет, зависит от твоей удачи...",color=0x228b22), components=components, delete_after = 30)
         try:
-            slct = await self.bot.wait_for("message_interaction", timeout=20) # Как я понял(т.к. нет никаких ошибок), ожидание этой строки напросто зависает.
+            slct = await self.bot.wait_for("message_interaction", timeout=20)
             if slct.values[0] == str(door):
-                await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Вы выбрали правильную дверь!"),description=lang(ctx,"Поздравляю!"),color=0x228b22), components=None)
+                await ctx.edit_original_response(embed=disnake.Embed(title="Вы выбрали правильную дверь!",description="Поздравляю!",color=0x228b22), components=None)
                 await slct.response.defer()
             else:
-                await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Не верно..."),description=lang(ctx,f"Правильной дверью была {door}. В следующий раз повезёт!"), color=disnake.Color.red()), components=None)
+                await ctx.edit_original_response(embed=disnake.Embed(title="Не верно...",description=f"Правильной дверью была {door}. В следующий раз повезёт!", color=disnake.Color.red()), components=None)
                 await slct.response.defer()
         except asyncio.TimeoutError:
-            await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Таймаут истёк!"), color=disnake.Color.red()))
+            await ctx.edit_original_response(embed=disnake.Embed(title="Таймаут истёк!", color=disnake.Color.red()))
 
     @commands.slash_command(name="akinator",description="Сыграйте в акинатора.")
     async def aki(self, ctx):
@@ -745,17 +933,17 @@ class Games(commands.Cog):
         stats = True
         number = 1
         component = [
-            disnake.ui.Button(label=lang(ctx,"Да"),style=disnake.ButtonStyle.success,custom_id="Yes"),
-            disnake.ui.Button(label=lang(ctx,"Нет"),style=disnake.ButtonStyle.danger,custom_id="No"),
-            disnake.ui.Button(label=lang(ctx,"Я не знаю"),style=disnake.ButtonStyle.blurple,custom_id="Idk"),
-            disnake.ui.Button(label=lang(ctx,"Возможно"), style=disnake.ButtonStyle.success,custom_id="Probably"),
-            disnake.ui.Button(label=lang(ctx,"Скорее всего нет"),style=disnake.ButtonStyle.danger,custom_id="Probably not"),
-            disnake.ui.Button(emoji="🛑", label=lang(ctx,"Стоп"), style=disnake.ButtonStyle.danger,custom_id="STOP")
+            disnake.ui.Button(label="Да",style=disnake.ButtonStyle.success,custom_id="Yes"),
+            disnake.ui.Button(label="Нет",style=disnake.ButtonStyle.danger,custom_id="No"),
+            disnake.ui.Button(label="Я не знаю",style=disnake.ButtonStyle.blurple,custom_id="Idk"),
+            disnake.ui.Button(label="Возможно", style=disnake.ButtonStyle.success,custom_id="Probably"),
+            disnake.ui.Button(label="Скорее всего нет",style=disnake.ButtonStyle.danger,custom_id="Probably not"),
+            disnake.ui.Button(emoji="🛑", label="Стоп", style=disnake.ButtonStyle.danger,custom_id="STOP")
         ]
         def check(msg):
             return msg.author.id == ctx.author.id
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,f"Вопрос {number}"),description=lang(ctx,first_queston),color=0x228b22), components=component)
-        while aki.progression <= 80 and stats:
+        await ctx.send(embed=disnake.Embed(title=f"Вопрос {number}",description=translator.translate(first_queston, dest="ru").text,color=0x228b22), components=component)
+        while aki.progression <= 90 and stats:
             try:
 
                 btn = await bot.wait_for("button_click", check=check, timeout=90)
@@ -764,22 +952,22 @@ class Games(commands.Cog):
                     if not win:
                         stats=False
                         await btn.response.defer()
-                        return await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Вы закончили игру."),color=disnake.Color.red()),components=None)
+                        return await ctx.edit_original_response(embed=disnake.Embed(title="Вы закончили игру.",color=disnake.Color.red()),components=None)
                     stats = False
                     await btn.response.defer()
 
-                    return await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Вы закончили игру."),description=lang(ctx,f"На данный момент Акинатор считает что это {lang(ctx,win.name)}!"),color=disnake.Color.red()),components=None)
+                    return await ctx.edit_original_response(embed=disnake.Embed(title="Вы закончили игру.",description=f"На данный момент Акинатор считает что это {translator.translate(win.name, dest='ru').text}!",color=disnake.Color.red()),components=None)
 
                 answer = Answer.from_str(btn.component.custom_id)
                 aki.answer(answer)
                 number += 1
-                await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,f"Вопрос {number}"),description=lang(ctx,aki.question), color=0x228b22), components=component)
+                await ctx.edit_original_response(embed=disnake.Embed(title=f"Вопрос {number}",description=translator.translate(aki.question, dest="ru").text, color=0x228b22), components=component)
             except asyncio.TimeoutError:
                 win = aki.win()
                 stats = False
         win = aki.win()
         if win:
-            await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,f"Это {win.name}!"),description=f'{lang(ctx,win.description)}',color=disnake.Color.red()).set_image(url = win.absolute_picture_path), components=None)
+            await ctx.edit_original_response(embed=disnake.Embed(title=f"Это {win.name}!",description=f'{translator.translate(win.description, dest="ru")}',color=disnake.Color.red()).set_image(url = win.absolute_picture_path), components=None)
             stats = False
 
 class Moderation(commands.Cog):
@@ -794,8 +982,8 @@ class Moderation(commands.Cog):
         try:
             await member.ban(reason=reason)
         except:
-            return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Извините, ошибка"),description=lang(ctx,"У меня не хватает прав\nВозможна другая причина ошибки."),color=disnake.Color.red()))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=f"{member.name} {lang(ctx,'теперь в бане')}",color=disnake.Color.green()))
+            return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Извините, ошибка"),description=lang(ctx,"У меня не хватает прав\nВозможна другая причина ошибки."),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=f"{member.name} {lang(ctx,'теперь в бане')}",color=disnake.Color.green()), delete_after = 20)
 
     @commands.slash_command(name="kick", description="Выгнать кого с сервера.")
     @commands.has_permissions(kick_members = True)
@@ -805,8 +993,8 @@ class Moderation(commands.Cog):
         try:
             await member.kick()
         except:
-            return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Извините, ошибка"),description=lang(ctx,"У меня не хватает прав\nВозможна другая причина."),color=disnake.Color.red()))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно!')}",description=f"{member.mention} {lang(ctx,'больше нет на сервере!')}", color=disnake.Color.green()))
+            return await ctx.send(embed=disnake.Embed(title=lang(ctx,"Извините, ошибка"),description=lang(ctx,"У меня не хватает прав\nВозможна другая причина."),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно!')}",description=f"{member.mention} {lang(ctx,'больше нет на сервере!')}", color=disnake.Color.green()), delete_after = 20)
 
     @commands.slash_command(name="mute",description="Заглушить кого либо на сервере")
     @commands.has_permissions(moderate_members = True)
@@ -816,9 +1004,9 @@ class Moderation(commands.Cog):
         try:
             await member.timeout(duration=datetime.timedelta(minutes=time))
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}!",description=lang(ctx,"У меня не хватает прав.\nВозможна другая причина."),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}!",description=lang(ctx,"У меня не хватает прав.\nВозможна другая причина."),color=disnake.Color.red()), delete_after = 10)
 
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=f"{lang(ctx,'Теперь')} {member.name} {lang(ctx,'находиться в мьюте на {time} минут.')}"))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь {member.name} находиться в мьюте на {time} минут."), delete_after = 20)
 
     @commands.slash_command(name="warn",description="Выдать варн пользователю")
     @commands.has_permissions(moderate_members = True)
@@ -840,7 +1028,7 @@ class Moderation(commands.Cog):
         date = datet.utcnow()
         utc_time = calendar.timegm(date.utctimetuple())
 
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=f"{lang(ctx,'Варн успешно нанесён на пользователя')} {member.mention}!\n{lang(ctx,'Произошло это')} <t:{utc_time}:R>").add_field(name=lang(ctx,"Номер случая"),value=f"{special}"))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=f"{lang(ctx,'Варн успешно нанесён на пользователя')} {member.mention}!\n{lang(ctx,'Произошло это')} <t:{utc_time}:R>").add_field(name=lang(ctx,"Номер случая"),value=f"{special}"), delete_after = 20)
 
     @commands.slash_command(name="warns",description="Увидеть список варном на этом сервере")
     async def warns(self, ctx):
@@ -854,9 +1042,9 @@ class Moderation(commands.Cog):
                     users.append(user)
                     message.append(f"{lang(ctx,'Номер случая')} - {special_id}:\n{lang(ctx,'Пользователь')} - {self.bot.get_user(user).mention}\n{lang(ctx,'Причина')} - {reas}\n")
         if users == []:
-            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="На сервере ещё нет варнов.",color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Ошибка",description="На сервере ещё нет варнов.",color=disnake.Color.red()), delete_after = 10)
         embed = disnake.Embed(title=lang(ctx,"Варн таблица🔍"), description="\n".join(list(map(str, message))))
-        await ctx.send(embed=embed)
+        await ctx.send(embed=embed, delete_after = 40)
 
     @commands.slash_command(name="unwarn",description="Снять варн с пользователя")
     @commands.has_permissions(moderate_members = True)
@@ -867,14 +1055,14 @@ class Moderation(commands.Cog):
         try:
             special = int(special)
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang("Номер случая должен быть числом!"),color=disnake.Color.red()), ephemeral=True)
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang("Номер случая должен быть числом!"),color=disnake.Color.red()), delete_after = 10)
         try: #Пробуем
             with sqlite3.connect("database.db") as db:
-                cursor = db.cursor() 
+                cursor = db.cursor()
                 cursor.execute("DELETE FROM warns WHERE special_id = ?", (int(special),)) # Даём запрос на удаление
-                await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=lang(ctx,f"Номер случая {special} был удалён из базы данных"),color=0x228b22))
+                await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx,'Успешно')}",description=lang(ctx,f"Номер случая {special} был удалён из базы данных"),color=0x228b22), delete_after = 20)
         except sqlite3.Error:
-            return await ctx.send(lang(ctx,"Неверный номер случая!"))
+            return await ctx.send(lang(ctx,"Неверный номер случая!"), delete_after = 10)
 
     @commands.slash_command(name="purge",description="Очистить канал")
     @commands.has_permissions(manage_messages=True)
@@ -882,7 +1070,7 @@ class Moderation(commands.Cog):
     async def purg(self, ctx, count: int = commands.Param(description="Сколько сообщений удалить?")):
         await ctx.response.defer()
         await ctx.channel.purge(limit=int(count))
-        await ctx.channel.send(f"<:correctCheckmark:1047244074350018700> {lang(ctx,f'Успешно очищено {count} сообщений!')}")
+        await ctx.channel.send(f"<:correctCheckmark:1047244074350018700> {lang(ctx,f'Успешно очищено {count} сообщений!')}", delete_after = 20)
 
 
 class Utils(commands.Cog):
@@ -917,46 +1105,46 @@ class Utils(commands.Cog):
             balance = 0
         t = member.status
         if t == disnake.Status.online:
-            d = lang(ctx,"В сети")
+            d = "В сети"
 
         t = member.status
         if t == disnake.Status.offline:
-            d = lang(ctx,"Не в сети")
+            d = "Не в сети"
 
         t = member.status
         if t == disnake.Status.idle:
-            d = lang(ctx,"Не активен")
+            d = "Не активен"
 
         t = member.status
         if t == disnake.Status.dnd:
-            d = lang(ctx,"Не беспокоить")
+            d = "Не беспокоить"
 
-        img = Image.new('RGBA', (500, 170), '#000000')
+        img = Image.new('RGBA', (1000, 340), '#000000')
         backgr = ["https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/1614397342_47-p-temnii-multyashnii-fon-64.png?v=1670188383348","https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/1622768497_26-phonoteka_org-p-noch-art-minimalizm-krasivo-28.png?v=1670188403979","https://cdn.glitch.global/5fcfa7e8-8436-4acd-a852-e721cd1b531e/i.png?v=1670188415480"]
         r = requests.get(random.choice(backgr), stream = True)
         r = Image.open(io.BytesIO(r.content))
         r = r.convert("RGBA")
-        r = r.resize((500, 170))
-        img.paste(r, (0, 0, 500, 170))
+        r = r.resize((1000, 340))
+        img.paste(r, (0, 0, 1000, 340))
         url = str(member.avatar.url)
         r = requests.get(url, stream = True)
         r = Image.open(io.BytesIO(r.content))
         r = r.convert('RGBA')
-        r = r.resize((100, 100))
-        img.paste(r, (15, 15, 115, 115))
-        idraw = ImageDraw.Draw(img)        
+        r = r.resize((200, 200))
+        img.paste(r, (30, 30, 230, 230))
+        idraw = ImageDraw.Draw(img)
         name = member.name
-        headline = ImageFont.truetype('comfortaa.ttf', size = 25)
-        undertext = ImageFont.truetype('comfortaa.ttf', size = 13)
-        idraw.text((125, 15), f'{name}', font=headline, fill="#ffffff")
-        idraw.text((125, 50), f'#{member.discriminator}', font=undertext, fill="#ffffff")
-        idraw.text((125, 70), f'ID: \n{member.id}', font = undertext, fill="#ffffff")
-        idraw.text((125, 110), f'{lang(ctx,"Статус")}: {d}', font = undertext, fill="#ffffff")
-        idraw.text((125, 130), f"{lang(ctx,'Кол-во очков')}: {scopes}", font = undertext, fill="#ffffff")
-        idraw.text((125, 150), f"{lang(ctx,'Баланс')}: {int(balance)}", font=undertext, fill="#ffffff")
-        idraw.text((10, 155), f'{self.bot.user.name} Draw\'s', font=undertext, fill="#ffffff")
+        headline = ImageFont.truetype('gagalin.otf', size = 60)
+        undertext = ImageFont.truetype('gagalin.otf', size = 36)
+        idraw.text((250, 30), f'{name}', font=headline, fill="#ffffff")
+        idraw.text((250, 100), f'#{member.discriminator}', font=undertext, fill="#ffffff")
+        idraw.text((250, 140), f'ID: \n{member.id}', font = undertext, fill="#ffffff")
+        idraw.text((250, 220), f'Статус: {d}', font = undertext, fill="#ffffff")
+        idraw.text((250, 260), f"Кол-во очков: {scopes}", font = undertext, fill="#ffffff")
+        idraw.text((250, 300), f"Баланс: {int(balance)}", font=undertext, fill="#ffffff")
+        idraw.text((20, 290), f'{self.bot.user.name} Draw\'s', font=undertext, fill="#ffffff")
         img.save('user_card.png')
-        await ctx.send(file=disnake.File("user_card.png"))
+        await ctx.send(file=disnake.File("user_card.png"), delete_after = 50)
 
     @commands.slash_command(name="jacque",description="Генерирует изображение с популярным Джак Фрэско")
     async def jacque(self, ctx, текст = commands.Param(description="Что будет говорить Джак Фрэско?")):
@@ -975,8 +1163,8 @@ class Utils(commands.Cog):
             draw.text((10, 240), f"{self.bot.user.name} Draw\'s", font=font, fill="#000000")
             img.save("jacque.png")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Не удалось выполнить данное действие."),color=disnake.Color.red()))
-        await ctx.send(file=disnake.File("jacque.png"))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Не удалось выполнить данное действие."),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(file=disnake.File("jacque.png"), delete_after = 50)
 
     @commands.slash_command(name="passed", description="Делает вашу аватарку в стиль GTA, миссия выполнена")
     async def passed(self, ctx, участник: disnake.Member = None):
@@ -986,7 +1174,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/passed?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="wasted", description="Делает вашу аватарку в стиль GTA, миссия провалена")
     async def wasted(self, ctx, участник: disnake.Member = None):
@@ -996,7 +1184,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/wasted?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="lgbt", description="Делает вам ЛГБТ аватарку")
     async def lgbt(self, ctx, участник: disnake.Member = None):
@@ -1006,7 +1194,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/gay?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="jail", description="Делает вам аватарку, будто вы в тюрьме")
     async def jail(self, ctx, участник: disnake.Member = None):
@@ -1016,7 +1204,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/jail?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="ussr", description="Переделывает вашу аватарку в стиле СССР")
     async def ussr(self, ctx, участник: disnake.Member = None):
@@ -1026,7 +1214,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/comrade?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="triggered", description="Делает гифку вашей аватарки в стиле TRIGGERED")
     async def triggered(self, ctx, участник: disnake.Member = None):
@@ -1036,7 +1224,7 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/overlay/triggered?avatar={member.avatar.url}")
         json_load = request.url
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=json_load), delete_after = 20)
 
     @commands.slash_command(name="pixelate",description="Пиксилизирует ваш аватар")
     async def pixelate(self, ctx, участник: disnake.Member = None):
@@ -1045,7 +1233,7 @@ class Utils(commands.Cog):
             member = ctx.author
         await ctx.response.defer()
         request = requests.get(f"https://some-random-api.ml/canvas/misc/pixelate?avatar={member.avatar.url}")
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=request.url))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=request.url), delete_after = 20)
 
     @commands.slash_command(name="youtube-comment",description="Делает в стиле вас коментарий с ютуба")
     async def comment(self, ctx, коментарий, ник, аватар: disnake.Member = commands.Param(description="Вы можете указать с какого участника будет взят аватар")):
@@ -1056,26 +1244,26 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         comment = коментарий
         request = requests.get(f"https://some-random-api.ml/canvas/misc/youtube-comment?avatar={avatar.avatar.url}&username={nick}&comment={comment}")
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=request.url))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат обработки")).set_image(url=request.url), delete_after = 50)
 
     @commands.slash_command(name="voice",description="Создать озвучку")
     async def voice(self, ctx, текст = commands.Param(description="🔍 Какой текст озвучить?")):
         text = текст
         tts = gTTS(text=text, lang="ru")
         tts.save("voice.mp3")
-        await ctx.send(lang(ctx,"🔍Результат"),file=disnake.File("voice.mp3"))
+        await ctx.send(lang(ctx,"🔍Результат"),file=disnake.File("voice.mp3"), delete_after = 50)
 
     @commands.slash_command(name="encode",description="Надо зашифровать текст в base64? Легко!")
     async def encode(self, ctx, текст = commands.Param(description="Текст, который надо зашифровать")):
         request = requests.get(f"https://some-random-api.ml/others/base64?encode={текст}")
         json_load = json.loads(request.text)
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат"),description=json_load["base64"],color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат"),description=json_load["base64"],color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="decode",description="Надо расшифровать текст из base64? Легко!")
     async def decode(self, ctx, текст = commands.Param(description="Текст base64")):
         request = requests.get(f"https://some-random-api.ml/others/base64?decode={текст}")
         json_load = json.loads(request.text)
-        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат"),description=json_load["text"],color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=lang(ctx,"🔍Результат"),description=json_load["text"],color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="joke",description="Возвращает шутку")
     async def joke(self, ctx, язык = commands.Param(default="ru", description="На каком языке вы хотите увидеть шутку?", choices = [disnake.OptionChoice("Русский","ru"),disnake.OptionChoice("English","en"),disnake.OptionChoice("Украiньска","uk")])):
@@ -1083,7 +1271,7 @@ class Utils(commands.Cog):
         api_result = requests.get("https://some-random-api.ml/others/joke")
         results = json.loads(api_result.text)
         text = translator.translate(results["joke"], dest=язык)
-        await ctx.send(embed=disnake.Embed(title=f"{text.text}",description=lang(ctx,"Шутка взята с сайта **None**")))
+        await ctx.send(embed=disnake.Embed(title=f"{text.text}",description=lang(ctx,"Шутка взята с сайта **None**")), delete_after = 20)
 
     @commands.slash_command(name="poll",description="Запустить голосование.")
     async def poll(self, ctx, заголовок, sel1, sel2, sel3 = None, sel4 = None, sel5 = None, sel6 = None, sel7 = None, sel8 = None, sel9 = None, sel10 = None):
@@ -1124,11 +1312,10 @@ class Utils(commands.Cog):
         await ctx.response.defer()
         await ctx.send(embed=disnake.Embed(title=lang(ctx,"Я выбираю..."), color=0x228b22))
         await asyncio.sleep(3)
-        await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Я выбираю"),description=select + "!",color=0x228b22))
+        await ctx.edit_original_response(embed=disnake.Embed(title=lang(ctx,"Я выбираю"),description=select + "!",color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="donate",description="Поддержать создателей бота")
     async def donate(self, ctx):
-        await ctx.response.defer()
         await ctx.send(embed=disnake.Embed(title=lang(ctx,"Мы будем бесконечно благодарны даже 10 рублям!"),description=f"DonationAlerts - [**нажмите**](https://www.donationalerts.com/r/tjma)\n{lang(ctx,'Возможно будет добавлена оплата через наш сайт.')}",color=0x228b22), ephemeral=True)
 
     @commands.slash_command(name="quote",description="Цитатыыы великииих людеей")
@@ -1143,29 +1330,6 @@ class Utils(commands.Cog):
         await ctx.channel.send(текст)
         await ctx.send("<:correctCheckmark:1047244074350018700>",ephemeral=True)
 
-    @commands.slash_command(name="weather", description="Узнайте погоду в каком то городе России.")
-    async def wea(self, ctx, город = commands.Param(description="Укажите город", choices=[disnake.OptionChoice("Брянск, Брянская область","bryansk"),disnake.OptionChoice("Москва, Пушкино","pushkino_1"),disnake.OptionChoice("Дагестан, Каспийск","kaspysk"),disnake.OptionChoice("Москва, Жуковский","zhukovsky"),disnake.OptionChoice("Крым, Николаевка","mykolayivka"),disnake.OptionChoice("Воронеж, Калач", "kalach")])):
-        await ctx.response.defer()
-        temp = 0
-        weather_description = "Облачно"
-        weather_cust = ""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"https://world-weather.ru/pogoda/russia/{город}/", headers={"User-Agent": UserAgent().random}) as response:
-                r = await aiohttp.StreamReader.read(response.content)
-                soup = BS(r, "html.parser")
-                temp = soup.find("div", {"id": "weather-now-number"}).text.strip()
-                weather_description = soup.find("span", {"id": "weather-now-icon"}).get("title")
-                dat = soup.find("div", {"id": "weather-now-description"})
-                dat1 = dat.find_all("dd")
-                dat = dat.find_all("dt")
-                for txt, val in zip(dat, dat1):
-                    weather_cust += f"\nℹ{txt.text.strip()} {val.text.strip()}"
-        await ctx.send(embed=disnake.Embed(
-            title = lang(ctx, f"🌥Погода в {город}."),
-            description = lang(ctx, f"🌡Температура: {temp}\n🌥{weather_description}\n{weather_cust}"),
-            color = 0x228b22
-        ))
-
     @commands.slash_command(name="animego",description="Поиск аниме-фильмов на animego.net")
     async def anigo(self, ctx, название = commands.Param(description="Введите название вашего аниме")):
         await ctx.response.defer()
@@ -1176,13 +1340,13 @@ class Utils(commands.Cog):
         img = None
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"https://animego.org/search/all?q={name}", headers={"User-Agent": "Юзер агент."}) as response:
+                async with session.get(f"https://animego.org/search/all?q={name}", headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.5.715 Yowser/2.5 Safari/537.36"}) as response:
                     r = await aiohttp.StreamReader.read(response.content)
                     soup = BS(r, "html.parser")
                     item = soup.find_all("div", {"class": "h5 font-weight-normal mb-2 card-title text-truncate"})
                     title = item[0].find("a").text.strip()
                     uri = item[0].find("a").get("href")
-                async with session.get(uri, headers={"User-Agent": "Юзер агент."}) as response:
+                async with session.get(uri, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 YaBrowser/22.11.5.715 Yowser/2.5 Safari/537.36"}) as response:
                     r = await aiohttp.StreamReader.read(response.content)
                     soup = BS(r, "html.parser")
                     description = soup.find("div", {"class": "description pb-3"}).text.strip()
@@ -1194,7 +1358,7 @@ class Utils(commands.Cog):
             title = lang(ctx, title),
             description = lang(ctx, description) + f"\n\n[**{lang(ctx, 'Ссылка для просмотра')}**]({uri})",
             color = 0x228b22
-        ).set_thumbnail(url = img))
+        ).set_thumbnail(url = img), delete_after = 30)
 
 
 class BotSettings(commands.Cog):
@@ -1209,14 +1373,14 @@ class BotSettings(commands.Cog):
         try:
             message = await channel.send("https://tenor.com/view/harry-potter-funny-harrypotter-voldemort-gif-19286790")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Кажеться, я не могу отправлять сообщения в этот канал"),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Кажеться, я не могу отправлять сообщения в этот канал"),color=disnake.Color.red()), delete_after = 10)
         else:
             await message.delete()
         try:
             Memory.write(f"channels/{ctx.guild.id}welcomechannel.txt", channel.id)
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать канал в память\nОбратитесь на наш сервер за помощью."), color=disnake.Color.red()))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Теперь уведомления о зашедших участниках будут приходить в <#{channel.id}>"),color=0x228b22))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать канал в память\nОбратитесь на наш сервер за помощью."), color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Теперь уведомления о зашедших участниках будут приходить в <#{channel.id}>"),color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="set-bye-channel", description="[АДМИН] Устанавливает канал для прощальных сообщений")
     @commands.has_permissions(manage_guild = True)
@@ -1227,14 +1391,14 @@ class BotSettings(commands.Cog):
         try:
             message = await channel.send("https://tenor.com/view/harry-potter-funny-harrypotter-voldemort-gif-19286790")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Кажеться, я не могу отправлять сообщения в этот канал"),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Кажеться, я не могу отправлять сообщения в этот канал"),color=disnake.Color.red()), delete_after = 10)
         else:
             await message.delete()
         try:
             Memory.write(f"channels/{ctx.guild.id}byechannel.txt", channel.id)
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать канал в память\nОбратитесь на наш сервер за помощью."), color=disnake.Color.red()))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Теперь уведомления о ушедших участниках будут приходить в <#{channel.id}>"),color=0x228b22))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать канал в память\nОбратитесь на наш сервер за помощью."), color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Теперь уведомления о ушедших участниках будут приходить в <#{channel.id}>"),color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="set-daily",description="[АДМИН] Установить ежедневный бонус")
     @commands.has_permissions(manage_guild = True)
@@ -1244,14 +1408,14 @@ class BotSettings(commands.Cog):
         try:
             summ = int(summ)
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Вы указали **НЕ** число"), color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Вы указали **НЕ** число"), color=disnake.Color.red()), delete_after = 10)
         try:
             Memory.write(f"daily/{ctx.guild.id}summ-of-daily.txt", str(summ))
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать число в память."),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Не удалось записать число в память."),color=disnake.Color.red()), delete_after = 10)
 
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь каждый день участникам по ихнему желанию будет даваться эта сумма.")))
-    
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь каждый день участникам по ихнему желанию будет даваться эта сумма.")), delete_after = 20)
+
     @commands.slash_command(name="set-anti-badwords",description="Включить/выключить преды за плохие слова.")
     @commands.has_permissions(manage_guild = True)
     async def set_anti_badwords(self, ctx):
@@ -1260,14 +1424,14 @@ class BotSettings(commands.Cog):
             return await ctx.send(lang(ctx, "Удивительные факты: Я не могу включить поиск плохих слов в ЛС."),ephemeral=True)
 
         Memory.write(f"badwords/{ctx.guild.id}.txt", "you")
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь пользователям за плохие слова будут выдаваться преды."),color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь пользователям за плохие слова будут выдаваться преды."),color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="set-work-price",description="Установить получаемую сумму за работу, 0 если отключить")
     @commands.has_permissions(manage_guild = True)
     async def set_work_price(self, ctx, сумма: int = commands.Param(description="Какую сумму будут получать участники?")):
         await ctx.response.defer()
         Memory.write(f"works/{ctx.guild.id}.txt", сумма)
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь за работу будет выдаваться эта сумма.")))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, "Теперь за работу будет выдаваться эта сумма.")), delete_after = 20)
 
 
 
@@ -1280,20 +1444,20 @@ class BotSettings(commands.Cog):
             if os.path.isfile(f"channels/{ctx.guild.id}welcomechannel.txt"):
                 os.remove(f"channels/{ctx.guild.id}welcomechannel.txt")
             else:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Уведомления о пришедших участниках уже были отключены."), color=disnake.Color.red()))
-            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Уведомления об пришедших участниках больше не будут приходить."), color=0x228b22))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Уведомления о пришедших участниках уже были отключены."), color=disnake.Color.red()), delete_after = 10)
+            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Уведомления об пришедших участниках больше не будут приходить."), color=0x228b22), delete_after = 20)
         if setting == "bye_messages":
             if os.path.isfile(f"channels/{ctx.guild.id}byechannel.txt"):
                 os.remove(f"channels/{ctx.guild.id}byechannel.txt")
             else:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Уведомления об ушедших участниках уже были отключены."), color=disnake.Color.red()))
-            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Уведомления об ушедших участниках больше не будут приходить."), color=0x228b22))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Уведомления об ушедших участниках уже были отключены."), color=disnake.Color.red()), delete_after = 10)
+            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Уведомления об ушедших участниках больше не будут приходить."), color=0x228b22), delete_after = 20)
         if setting == "badwords":
             if os.path.isfile(f"badwords/{ctx.guild.id}.txt"):
                 os.remove(f"badwords/{ctx.guild.id}.txt")
             else:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Варны за плохие слова уже были отключены."), color=disnake.Color.red()))
-            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Варны за плохие слова больше не будут выдаваться."), color=0x228b22))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Варны за плохие слова уже были отключены."), color=disnake.Color.red()), delete_after = 10)
+            await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> {lang(ctx, 'Успешно')}",description=lang(ctx, f"Варны за плохие слова больше не будут выдаваться."), color=0x228b22), delete_after = 20)
 
 
 
@@ -1323,7 +1487,7 @@ class Economy(commands.Cog):
         if not bals:
             bals = 0
 
-        await ctx.send(embed=disnake.Embed(title=f"{lang(ctx, 'Баланс пользователя')} **{member.name}**",description=f"{lang(ctx, 'Баланс')}: **{bals}**<:dollar:1051974269296451684>",color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"{lang(ctx, 'Баланс пользователя')} **{member.name}**",description=f"{lang(ctx, 'Баланс')}: **{bals}**<:dollar:1051974269296451684>",color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="work",description="Пойти работать")
     @commands.cooldown(1, 120, commands.BucketType.user)
@@ -1333,11 +1497,11 @@ class Economy(commands.Cog):
         try:
             work_price = Memory.read(f"works/{ctx.guild.id}.txt")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Разработчики не установили цену, а для меня это значит что они отключили экономику\nЕсли вы считаете, что на сервере должна присутствовать экономика, обратитесь к администраций сервера"),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "Разработчики не установили цену, а для меня это значит что они отключили экономику\nЕсли вы считаете, что на сервере должна присутствовать экономика, обратитесь к администраций сервера"),color=disnake.Color.red()), delete_after = 10)
         work_price = int(work_price)
         if work_price == 0:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "На сервере отключена экономика."),color=disnake.Color.red()))
-        await ctx.send(embed=disnake.Embed(title=lang(ctx, "Работаем..."),color=0x228b22))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx, 'Ошибка')}",description=lang(ctx, "На сервере отключена экономика."),color=disnake.Color.red()), delete_after = 10)
+        await ctx.send(embed=disnake.Embed(title=lang(ctx, "Работаем..."),color=0x228b22), delete_after = 30)
         await asyncio.sleep(10)
         with sqlite3.connect("database.db") as db:
             cursor = db.cursor()
@@ -1353,18 +1517,18 @@ class Economy(commands.Cog):
         try:
             summ = Memory.read(f"daily/{ctx.guild.id}summ-of-daily.txt")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description=lang(ctx, "Разработчики не указывали сумму ни разу, и да бы не создать им проблем, я вам откажу."),color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description=lang(ctx, "Разработчики не указывали сумму ни разу, и да бы не создать им проблем, я вам откажу."),color=disnake.Color.red()), delete_after = 10)
         try:
             work_price = Memory.read(f"works/{ctx.guild.id}.txt")
         except:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="На этом сервере отключена экономика"))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="На этом сервере отключена экономика"), delete_after = 10)
         summ = int(summ)
         if summ == 0:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Ежедневная награда на этом сервере отсутствует",color=disnake.Color.red()))
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Ежедневная награда на этом сервере отсутствует",color=disnake.Color.red()), delete_after = 10)
         with sqlite3.connect("database.db") as db:
             cursor = db.cursor()
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id))
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Вы получили свой ежедневный бонус, следующий бонус вы получите через 72000 секунд(20ч)!",color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description="Вы получили свой ежедневный бонус, следующий бонус вы получите через 72000 секунд(20ч)!",color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="add-money", description="Добавить деньги на счёт какого либо пользователя")
     @commands.has_permissions(moderate_members = True)
@@ -1379,7 +1543,7 @@ class Economy(commands.Cog):
                     if user == участник.id:
                         summ = suma
 
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь у участника {summ} <:dollar:1051974269296451684>!",color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь у участника {summ} <:dollar:1051974269296451684>!",color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="reduce-money", description="Убавить деньги со счёта какого либо пользователя")
     @commands.has_permissions(moderate_members = True)
@@ -1393,7 +1557,7 @@ class Economy(commands.Cog):
                 if guild == ctx.guild.id:
                     if user == участник.id:
                         summ = suma
-        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь у пользователя {suma} <:dollar:1051974269296451684>!", color=0x228b22))
+        await ctx.send(embed=disnake.Embed(title=f"<:correctCheckmark:1047244074350018700> Успешно",description=f"Теперь у пользователя {suma} <:dollar:1051974269296451684>!", color=0x228b22), delete_after = 20)
 
     @commands.slash_command(name="pay",description="Перевести деньги кому либо.")
     async def pay(self, ctx, участник: disnake.Member = commands.Param(description="Какому участнику хотите отправить (command.Args.summ) валюты?"), сумма: int = commands.Param(description="Какую сумму хотите отправить участнику?")):
@@ -1404,10 +1568,10 @@ class Economy(commands.Cog):
             cursor = db.cursor()
             for guild, user, balance in cursor.execute("SELECT * FROM balances WHERE user_id = ? AND guild_id = ?",(ctx.author.id, ctx.guild.id,)):
                 if int(balance) < int(summ):
-                    return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="У вас мало денег на счету",color=disnake.Color.red()))
+                    return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="У вас мало денег на счету",color=disnake.Color.red()), delete_after = 10)
             cursor.execute("UPDATE balances SET user_balance = user_balance - ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, ctx.author.id,))
             cursor.execute("UPDATE balances SET user_balance = user_balance + ? WHERE guild_id = ? AND user_id = ?", (summ, ctx.guild.id, member.id,))
-        await ctx.send("<:correctCheckmark:1047244074350018700>")
+        await ctx.send("<:correctCheckmark:1047244074350018700>", delete_after = 20)
 
     @commands.slash_command(name="ping",description="Проверка на работоспособность бота.")
     async def ping(self, ctx):
@@ -1433,7 +1597,7 @@ class Economy(commands.Cog):
         if ping > 350:
             st = "ОЧЕНЬ ПЛОХО"
             col = 0xff0000
-        await ctx.send(embed=disnake.Embed(title="Понг!",description=f"Моя задержка в связи: {ping}ms\nЭто {st}",color=col))
+        await ctx.send(embed=disnake.Embed(title="Понг!",description=f"Моя задержка в связи: {ping}ms\nЭто {st}",color=col), delete_after = 20)
 
     @commands.slash_command(name="guilds-list",description="-", guild_ids=[1047126198330859580])
     async def guilds_list(self, ctx):
@@ -1491,13 +1655,13 @@ class RolePlayHelps(commands.Cog):
         channel_webhooks = await ctx.channel.webhooks()
         for webhook in channel_webhooks:
             if webhook.user == bot.user and webhook.name == имя:
-                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Такой персонаж уже вроде существует, не?",color=disnake.Color.red()))
+                return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Такой персонаж уже вроде существует, не?",color=disnake.Color.red()), delete_after = 20)
         try:
             webhook = await ctx.channel.create_webhook(name=имя)
         except disnake.errors.HTTPException:
-            await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."))
+            await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."), delete_after = 20)
         else:
-            await ctx.send("<:correctCheckmark:1047244074350018700>")
+            await ctx.send("<:correctCheckmark:1047244074350018700>", delete_after = 20)
 
     @commands.slash_command(name="acc-send",description="Отправить что то от имени персонажа")
     @commands.bot_has_permissions(manage_webhooks = True)
@@ -1520,7 +1684,7 @@ class RolePlayHelps(commands.Cog):
             else:
                 await my_webhook.send(content=сообщение, avatar_url=avatar_url)
         except disnake.errors.HTTPException:
-            await ctx.send("Слишком много HTTP запросов на данный момент, простите...")
+            await ctx.send("Слишком много HTTP запросов на данный момент, простите...", delete_after = 20)
         else:
             await ctx.send(f"<:correctCheckmark:1047244074350018700>",ephemeral=True)
 
@@ -1535,7 +1699,7 @@ class RolePlayHelps(commands.Cog):
                 my_webhook = webhook
         if not my_webhook:
             return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Такого персонажа не существует!",color=disnake.Color.red()), ephemeral=True)
-        await ctx.send(embed=disnake.Embed(title="Пожалуйста, отправьте сюда изображение",description="Это изображение будет поставлено как аватар",color=0xffff00))
+        await ctx.send(embed=disnake.Embed(title="Пожалуйста, отправьте сюда изображение",description="Это изображение будет поставлено как аватар",color=0xffff00), delete_after = 20)
         status = True
         url = None
         while status:
@@ -1547,9 +1711,9 @@ class RolePlayHelps(commands.Cog):
                         url = msg.attachments[0].url
                     else:
                         status = False
-                        return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Вы не приложили никаких изображений, введите команду и отправьте мне сообщение с вложением",color=disnake.Color.red()))
+                        return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Вы не приложили никаких изображений, введите команду и отправьте мне сообщение с вложением",color=disnake.Color.red()), delete_after = 20)
         Memory.write(f"avatars/{ctx.channel.id}{имя}webhook.txt", url)
-        await ctx.send("<:correctCheckmark:1047244074350018700>")
+        await ctx.send("<:correctCheckmark:1047244074350018700>", delete_after = 20)
 
     @commands.slash_command(name="acc-remove",description="Удалить персонажа")
     @commands.has_permissions(manage_webhooks = True)
@@ -1562,16 +1726,16 @@ class RolePlayHelps(commands.Cog):
             if webhook.user == bot.user and webhook.name == имя:
                 my_webhook = webhook
         if not my_webhook:
-            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Такого персонажа не существует!",color=disnake.Color.red()), ephemeral=True)
+            return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>Ошибка",description="Такого персонажа не существует!",color=disnake.Color.red()), delete_after = 10)
         try:
             await my_webhook.delete()
             if os.path.isfile(f"avatars/{ctx.channel.id}{имя}webhook.txt"):
                 os.remove(f"avatars/{ctx.channel.id}{имя}webhook.txt")
 
         except disnake.errors.HTTPException:
-            await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."))
+            await ctx.send(lang(ctx, "Слишком много HTTP запросов на данный момент, простите..."), delete_after = 20)
         else:
-            await ctx.send("<:correctCheckmark:1047244074350018700>")
+            await ctx.send("<:correctCheckmark:1047244074350018700>", delete_after = 20)
 
 
     @commands.slash_command(name="acc-all",description="Посмотреть всех существующих персонажей в канале")
@@ -1583,7 +1747,7 @@ class RolePlayHelps(commands.Cog):
             if webhook.user == bot.user:
                 my_webhooks.append(webhook.name)
 
-        await ctx.send(embed=disnake.Embed(title="Все ваши персонажи в этом канале",description="\n".join(list(map(str, my_webhooks))), color=0x228b22))     
+        await ctx.send(embed=disnake.Embed(title="Все ваши персонажи в этом канале",description="\n".join(list(map(str, my_webhooks))), color=0x228b22), delete_after = 20)
 
 class Oauth:
     client_id = "1047125592220373075"
@@ -1593,8 +1757,8 @@ class Oauth:
     discord_login_url = f"https://discord.com/api/oauth2/authorize?client_id=1047125592220373075&redirect_uri=http%3A%2F%2Fde4.bot-hosting.net%3A7259%2Fsave_me&response_type=code&scope=identify%20guilds%20email"
     discord_token_url = "https://discord.com/api/oauth2/token"
     discord_api_url = "https://discord.com/api"
- 
- 
+
+
     @staticmethod
     def get_access_token(code):
         payload = {
@@ -1605,16 +1769,16 @@ class Oauth:
             "redirect_uri": Oauth.redirect_uri,
             "scope": Oauth.scope
         }
- 
+
         access_token = requests.post(url = Oauth.discord_token_url, data = payload).json()
         return access_token.get("access_token")
- 
- 
+
+
     @staticmethod
     def get_user_json(access_token):
         url = f"{Oauth.discord_api_url}/users/@me"
         headers = {"Authorization": f"Bearer {access_token}"}
- 
+
         user_object = requests.get(url = url, headers = headers).json()
         return user_object
 
@@ -1629,7 +1793,11 @@ bot.add_cog(BotSettings(bot))
 bot.add_cog(Economy(bot))
 bot.add_cog(Relationships(bot))
 bot.add_cog(RolePlayHelps(bot))
-app.config["SECRET_KEY"] = "VexSECRETCLIENTforUNIVEX57841"
+app.config["SECRET_KEY"] = "Туалет_взломает_тебя_ночью_если_не_добавишь_моего_бота"
+
+@bot.command(name="test", usage="?test <int:count>")
+async def tst(ctx, count: int):
+    await ctx.send(count, delete_after=5)
 
 @bot.command(name="create-verify-interface")
 async def cvi(ctx):
@@ -1693,7 +1861,7 @@ async def infouser(ctx, member: disnake.User):
         r = r.convert('RGBA')
         r = r.resize((100, 100))
         img.paste(r, (15, 15, 115, 115))
-        idraw = ImageDraw.Draw(img)        
+        idraw = ImageDraw.Draw(img)
         name = member.name
         headline = ImageFont.truetype('comfortaa.ttf', size = 25)
         undertext = ImageFont.truetype('comfortaa.ttf', size = 13)
@@ -1728,6 +1896,10 @@ async def on_ready():
 
         #db.execute('SET NAMES warns;')
         #db.execute('SET CHARACTER SET balances;')
+    with sqlite3.connect("db.db") as db:
+        c = db.cursor()
+
+        c.execute("CREATE TABLE IF NOT EXISTS intents(ini TEXT, outi TEXT)")
     try:
         asyncio.get_running_loop()
     except:
@@ -1772,6 +1944,16 @@ async def on_slash_command_error(ctx, error):
         print(error)
 
 @bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.errors.MissingRequiredArgument):
+        await ctx.send(embed=disnake.Embed(title="Использование команды:",description=f"```{ctx.command.usage}```\nВы не указали какой то аргумент.",color=disnake.Color.red()), delete_after=15)
+    elif isinstance(error, commands.errors.BadArgument):
+        await ctx.send(embed=disnake.Embed(title="Использование команды:",description=f"```{ctx.command.usage}```\nВы указали какой то из аргументов неправильно.",color=disnake.Color.red()), delete_after=15)
+    else:
+        print(error)
+
+
+@bot.event
 async def on_member_join(member):
     channel_id = 0
     try:
@@ -1814,30 +1996,35 @@ async def on_member_remove(member):
 async def on_button_click(ctx):
     ki = ctx.component.custom_id
     if ki == "next":
-        error = await Song.skip(ctx)
+        try:
+            error = await Song().skip(ctx)
+        except AttributeError:
+            pass
         if error == "notState": return await ctx.send("<:wrongCheckmark:1047244133078675607>Сейчас ничего не играет!",ephemeral=True)
         await ctx.response.defer()
     elif ki == "stop":
-        error = await Song.stop(ctx)
+        error = await Song().stop(ctx)
         if error == "notState": return await ctx.send("<:wrongCheckmark:1047244133078675607>Сейчас ничего не играет!",ephemeral=True)
         await ctx.response.defer()
     elif ki == "replay":
         voice_state = ctx.guild.voice_client
         if voice_state and voice_state.is_playing():
-            Song.pause(ctx.guild)
-            await Song.play(ctx)
-            await ctx.response.defer()
+            await Song().replay(ctx)
         else:
             await ctx.send("<:wrongCheckmark:1047244133078675607>Сейчас ничего не играет!",ephemeral=True)
     elif ki == "pause":
         voice_state = ctx.guild.voice_client
         if voice_state and voice_state.is_playing():
-            Song.pause(ctx.guild)
+            Song().pause(ctx.guild)
         elif voice_state and not voice_state.is_playing():
-            Song.resume(ctx.guild)
+            Song().resume(ctx.guild)
         else:
-           await ctx.send("<:wrongCheckmark:1047244133078675607>Сейчас ничего не играет!",ephemeral=True) 
+           await ctx.send("<:wrongCheckmark:1047244133078675607>Сейчас ничего не играет!",ephemeral=True)
         await ctx.response.defer()
+    elif ki == "text":
+        lyrics = Song().lyrics(ctx)
+        if not lyrics['lyrics']: return await ctx.send(embed=disnake.Embed(title=f"<:wrongCheckmark:1047244133078675607>{lang(ctx,'Ошибка')}",description=lang(ctx,"Текст этой песни не доступен"),color=disnake.Color.red()))
+        await ctx.send(embed=disnake.Embed(title=f"🔍 {lang(ctx,'Текст от трека')} **{lyrics['name']}**",description=lyrics["lyrics"]))
     elif ki == "verify":
         await ctx.author.add_roles(ctx.guild.get_role(1072833325661700096))
         await ctx.send("Ты подтверждён.", ephemeral=True)
@@ -1848,20 +2035,8 @@ async def on_message(msg):
         return
     #return await msg.reply(embed=disnake.Embed(title="<:wrongCheckmark:1047244133078675607>Неизвестная ошибка",description="Обратитесь к администраций",color=disnake.Color.red()))
     await bot.process_commands(msg)
-    if msg.guild.id == 1020041665047703622 or msg.guild.id == 1069253886533185576:
-        r = random.choice([0,0,1]) # Подбираем стоит ли нам сохранять предложение
-        if r == 1: # Если да
-            with sqlite3.connect("database.db") as db: # Сохраняем предложение в дб
-                c = db.cursor()
-                c.execute("INSERT INTO sugestions(guild_id, sugestion) VALUES(?, ?)", (msg.guild.id, msg.content,))
-            await msg.add_reaction(random.choice(["<:game:1047241643193016413>", "<:pandaElf:1047241340657872948>","<:shockedThinsk4:1047243843541680229>","<:steve:1047241588654473247>","<:very_angry_ping:1047241058037289093>","<:thinks2:1047243739468410900>","<:thinks1:1047243641388793938>"])) # Ставим реакцию
-        if bot.user.mentioned_in(msg): #если бот упомянут
-            ss = [] #список сохранёных предложений
-            with sqlite3.connect("database.db") as db: #Заполняем список
-                c = db.cursor()
-                for g, su in c.execute("SELECT * FROM sugestions WHERE guild_id = ?", (msg.guild.id,)):
-                    ss.append(su)
-            await msg.reply(random.choice(ss)) # отвечаем рандомным сообщением из списка
+    if bot.user.mentioned_in(msg): #если бот упомянут
+        await msg.reply(await chat.get_receive_async(msg.content))
 
 
     content = msg.content.lower()
@@ -2042,4 +2217,4 @@ def run_flask():
     app.run(host="0.0.0.0", port=7259)
 
 Thread(target=run_flask).start()
-bot.run("Токен") # Запуск бота
+bot.run("Писька бобра") # Запуск бота
